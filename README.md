@@ -18,7 +18,7 @@ A modern and optimized administration tool for Windows, accessible via your pers
 - **Monitoring**
   - Keylogging (educational use only).
 - **Miscellaneous**
-  - Screenshot capturing, URL opening, and more.
+  - Screenshot capturing, clipboard access, volume control, URL opening, and more.
 
 For a full list of available commands, use the `/commands` bot command or click on the `Show All Commands` button.
 
@@ -35,8 +35,11 @@ This version is based on the [Garneg's TelegramRAT](https://github.com/Garneg/Te
 - Optimized and refactored the entire codebase.
 - Improved stability and error handling.
 - Enhanced security practices.
+- Network information requests now use HTTPS.
 - Streamlined the command architecture for easier extension.
 - Updated all the third-party libraries.
+- Added /clipboard command for clipboard management.
+- Added /volume command for volume control.
 
 ## Setup
 
@@ -52,6 +55,14 @@ This version is based on the [Garneg's TelegramRAT](https://github.com/Garneg/Te
 3. Build the project using Visual Studio or any compatible IDE.
 4. Deploy the compiled binary on the target system.
 5. Start the application and control it through your Telegram bot.
+
+## Testing
+
+Run the included xUnit tests with:
+
+```bash
+dotnet test
+```
 
 ## License
 

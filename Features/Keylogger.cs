@@ -36,14 +36,4 @@ static class Keylogger
         IsLogging = false;
     }
 
-    enum VirtualKeyCodesTable
-    {
-        LBUTTON = 0x01,
-        BACKSPACE = 0x08,
-        TAB = 0x09,
-        SHIFT = 0x10,
-        CTRL = 0x21,
-        CAPSLOCK = 0x14,
-        ESC = 0x1B
-    }
 }

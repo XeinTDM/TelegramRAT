@@ -5,6 +5,8 @@ VisualStudioVersion = 17.12.35707.178 d17.12
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TelegramRAT", "TelegramRAT.csproj", "{5ECF025F-E486-47FE-97AA-9FA0A25C5690}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TelegramRAT.Tests", "Tests/TelegramRAT.Tests.csproj", "{1020A020-4EEA-4EE4-90AE-72DE0295F275}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -14,8 +16,12 @@ Global
 		{5ECF025F-E486-47FE-97AA-9FA0A25C5690}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{5ECF025F-E486-47FE-97AA-9FA0A25C5690}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5ECF025F-E486-47FE-97AA-9FA0A25C5690}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{5ECF025F-E486-47FE-97AA-9FA0A25C5690}.Release|Any CPU.Build.0 = Release|Any CPU
-	EndGlobalSection
+               {5ECF025F-E486-47FE-97AA-9FA0A25C5690}.Release|Any CPU.Build.0 = Release|Any CPU
+                {1020A020-4EEA-4EE4-90AE-72DE0295F275}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+                {1020A020-4EEA-4EE4-90AE-72DE0295F275}.Debug|Any CPU.Build.0 = Debug|Any CPU
+                {1020A020-4EEA-4EE4-90AE-72DE0295F275}.Release|Any CPU.ActiveCfg = Release|Any CPU
+                {1020A020-4EEA-4EE4-90AE-72DE0295F275}.Release|Any CPU.Build.0 = Release|Any CPU
+        EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection

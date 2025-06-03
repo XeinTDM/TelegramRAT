@@ -53,23 +53,6 @@ static class WinAPI
     }
 
 
-    [DllImport("wininet.dll", EntryPoint = "InternetGetConnectedState")]
-    static extern bool GetInternetConnection(IntPtr flags, int reserved = 0);
-
-    public static bool CheckInternetConnection()
-    {
-        IntPtr ptr = IntPtr.Zero;
-
-        GetInternetConnection(ptr);
-
-        long a = ptr.ToInt64();
-
-        if ((a & 0x20) != 0x20)
-        {
-            return true;
-        }
-        return false;
-    }
 
     [DllImport(u32, EntryPoint = "FindWindowA")]
     public static extern IntPtr FindWindow(string ClassName, string Caption);
@@ -90,8 +73,6 @@ static class WinAPI
     public const int SC_RESTORE = 0xF120;
     public const int SC_CLOSE = 0xF060;
 
-    [DllImport(u32, EntryPoint = "CloseWindow")]
-    public static extern bool MinimizeWindow(IntPtr handle);
 
     [DllImport(u32, SetLastError = true)]
     public static extern int GetWindowThreadProcessId(IntPtr hWnd, out int processId);
@@ -129,8 +110,6 @@ static class WinAPI
         return title.ToString();
     }
 
-    [DllImport(u32, EntryPoint = "PrintWindow")]
-    public static extern bool PrintWindow(IntPtr hWnd, IntPtr hDcBlt, uint flags);
 
     [DllImport(u32, EntryPoint = "GetWindowRect")]
 
