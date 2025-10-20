@@ -230,8 +230,8 @@ public static class CommandRegistry
                 {
                     if (model.Args[0].StartsWith("id:", StringComparison.OrdinalIgnoreCase))
                     {
-                        string procStr = model.Args[0][0..].Trim();
-                        if (int.TryParse(procStr, out int procId))
+                        string procStr = model.Args[0][3..].Trim();
+                        if (!string.IsNullOrEmpty(procStr) && int.TryParse(procStr, out int procId))
                         {
                             Process.GetProcessById(procId).Kill();
                             await Program.SendSuccessAsync(model.Message, "Process killed successfully.");
