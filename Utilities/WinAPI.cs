@@ -159,8 +159,11 @@ static class WinAPI
     [DllImport("Kernel32.dll", EntryPoint = "GetProcessId")]
     public static extern int GetProcessId(IntPtr procHandle);
 
-    [DllImport(u32, EntryPoint = "GetDC")]
+    [DllImport(u32, EntryPoint = "GetDC", SetLastError = true)]
     public static extern IntPtr GetDC(IntPtr hWnd);
+
+    [DllImport(u32, EntryPoint = "ReleaseDC", SetLastError = true)]
+    public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDc);
 
     [DllImport("Gdi32.dll", EntryPoint = "BitBlt")]
     public static extern bool BitBlt(
@@ -177,6 +180,6 @@ static class WinAPI
     [DllImport(u32, EntryPoint = "GetCursorPos")]
     public static extern bool GetCursorPos(out Point pt);
 
-    [DllImport(u32, EntryPoint = "GetClientRect")]
+    [DllImport(u32, EntryPoint = "GetClientRect", SetLastError = true)]
     public static extern bool GetClientRect(IntPtr hWnd, out Rectangle rect);
 }
