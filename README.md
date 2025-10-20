@@ -49,6 +49,10 @@ This version is based on the [Garneg's TelegramRAT](https://github.com/Garneg/Te
 4. Deploy the compiled binary on the target system.
 5. Start the application and control it through your Telegram bot.
 
+## Runtime behavior
+
+`TelegramRAT` supervises the polling loop and automatically recreates the Telegram client if an unexpected error occurs. Each retry clears any cached command state, notifies the configured owner about the failure, and waits with an exponential backoff (up to 60 seconds) before reconnecting. Pressing <kbd>Ctrl</kbd> + <kbd>C</kbd> requests a graceful shutdown so the bot can stop polling without forcing another restart.
+
 ## Configuration
 
 `TelegramRAT` reads its runtime configuration from **environment variables** or an optional `appsettings.json` file located next to the executable. Environment variables have priority; any value that is missing falls back to `appsettings.json`.
