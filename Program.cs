@@ -15,9 +15,12 @@ public static class Program
     private static readonly string BotToken = "YOUR_TELEGRAM_BOT_TOKEN";
     private static readonly long? OwnerId = null;
 
-    public static readonly TelegramBotClient Bot = new TelegramBotClient(BotToken);
+    public static ITelegramBotClient Bot { get; private set; } = new TelegramBotClient(BotToken);
     public static readonly List<BotCommand> Commands = new();
     private const int PollingDelay = 1000;
+
+    internal static void SetBotClient(ITelegramBotClient? botClient)
+        => Bot = botClient ?? new TelegramBotClient(BotToken);
 
     public static async Task Main(string[] args)
     {

