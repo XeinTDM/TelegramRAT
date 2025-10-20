@@ -44,14 +44,54 @@ This version is based on the [Garneg's TelegramRAT](https://github.com/Garneg/Te
    ```bash
    git clone https://github.com/XeinTDM/TelegramRAT.git
    ```
-2. Configure your bot token and owner ID in `Program.cs`:
-   ```csharp
-   private static readonly string BotToken = "YOUR_TELEGRAM_BOT_TOKEN";
-   private static readonly long? OwnerId = null;
-   ```
+2. Configure your bot token and owner ID (see [Configuration](#configuration)).
 3. Build the project using Visual Studio or any compatible IDE.
 4. Deploy the compiled binary on the target system.
 5. Start the application and control it through your Telegram bot.
+
+## Configuration
+
+`TelegramRAT` reads its runtime configuration from **environment variables** or an optional `appsettings.json` file located next to the executable. Environment variables have priority; any value that is missing falls back to `appsettings.json`.
+
+| Setting   | Environment variable       | `appsettings.json` key |
+|-----------|----------------------------|------------------------|
+| Bot token | `TELEGRAMRAT_BOT_TOKEN`    | `BotToken`             |
+| Owner ID  | `TELEGRAMRAT_OWNER_ID`     | `OwnerId`              |
+
+### Example `appsettings.json`
+
+```json
+{
+  "BotToken": "123456789:telegram-bot-token",
+  "OwnerId": "123456789"
+}
+```
+
+> ⚠️ **Never commit secrets.** Keep your production `appsettings.json` outside of source control and distribute it securely alongside the compiled binary when deploying.
+
+### Setting secrets via environment variables
+
+Environment variables are the recommended option for CI/CD or server deployments because they keep secrets out of the file system.
+
+- **PowerShell**
+  ```powershell
+  $env:TELEGRAMRAT_BOT_TOKEN = '123456789:telegram-bot-token'
+  $env:TELEGRAMRAT_OWNER_ID = '123456789'
+  ```
+
+- **Windows Command Prompt**
+  ```cmd
+  set TELEGRAMRAT_BOT_TOKEN=123456789:telegram-bot-token
+  set TELEGRAMRAT_OWNER_ID=123456789
+  ```
+
+- **Linux / macOS (Bash/Zsh)**
+  ```bash
+  export TELEGRAMRAT_BOT_TOKEN=123456789:telegram-bot-token
+  export TELEGRAMRAT_OWNER_ID=123456789
+  ```
+
+For long-running deployments (e.g., systemd services, container images), store the variables in the service definition or secret manager provided by your hosting environment.
 
 ## License
 
