@@ -298,7 +298,7 @@ public static class CommandRegistry
                             Process shutdown = new Process();
                             shutdown.StartInfo.CreateNoWindow = true;
                             shutdown.StartInfo.FileName = "powershell.exe";
-                            shutdown.StartInfo.Arguments = "/с shutdown /s /t 1";
+                            shutdown.StartInfo.Arguments = "/c shutdown /s /t 1";
                             await Program.Bot.SendMessage(model.Message.Chat.Id, "Done!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                             shutdown.Start();
                             break;
@@ -307,7 +307,7 @@ public static class CommandRegistry
                             Process restart = new Process();
                             restart.StartInfo.CreateNoWindow = true;
                             restart.StartInfo.FileName = "powershell.exe";
-                            restart.StartInfo.Arguments = "/с shutdown /r /t 1";
+                            restart.StartInfo.Arguments = "/c shutdown /r /t 1";
                             await Program.Bot.SendMessage(model.Message.Chat.Id, "Done!");
                             restart.Start();
                             break;
