@@ -19,9 +19,14 @@ public static class Program
     private static string BotToken = string.Empty;
     private static long OwnerId;
 
-    public static TelegramBotClient Bot { get; private set; } = null!;
+    public static ITelegramBotClient Bot { get; private set; } = null!;
     public static readonly List<BotCommand> Commands = new();
     private const int PollingDelay = 1000;
+    private const string UnauthorizedResponse = "You are not authorized to control this bot.";
+
+    internal static void SetBotClient(ITelegramBotClient botClient) => Bot = botClient;
+    internal static void SetOwnerId(long ownerId) => OwnerId = ownerId;
+    internal static Task ProcessUpdatesAsync(IEnumerable<Update> updates) => UpdateWorkerAsync(updates);
 
     public static async Task Main(string[] args)
     {
@@ -187,9 +192,34 @@ public static class Program
             if (update.CallbackQuery is not null)
             {
                 var callback = update.CallbackQuery;
+                var callbackChatId = callback.Message?.Chat.Id ?? callback.From?.Id;
+                var callbackSenderId = callback.From?.Id ?? callbackChatId;
+
+                if (!await EnsureAuthorizedAsync(
+                        callbackSenderId,
+                        callbackChatId,
+                        "callback query",
+                        respond: true,
+                        unauthorizedResponder: async () =>
+                        {
+                            await Bot.AnswerCallbackQuery(
+                                callback.Id,
+                                UnauthorizedResponse,
+                                showAlert: true
+                            );
+
+                            if (callbackChatId.HasValue)
+                            {
+                                await Bot.SendMessage(callbackChatId.Value, UnauthorizedResponse);
+                            }
+                        }))
+                {
+                    continue;
+                }
+
                 await Bot.AnswerCallbackQuery(callback.Id, "Callback received!");
 
-                if (callback.Message.ReplyMarkup != null)
+                if (callback.Message?.ReplyMarkup != null)
                 {
                     await Bot.EditMessageReplyMarkup(
                         callback.Message.Chat.Id,
@@ -202,14 +232,38 @@ public static class Program
                 {
                     var cmd = Commands.FirstOrDefault(c => c.Command == "commands");
                     if (cmd != null)
+                    {
+                        if (!await EnsureAuthorizedAsync(
+                                callbackSenderId,
+                                callbackChatId,
+                                "callback command execution",
+                                respond: false))
+                        {
+                            continue;
+                        }
+
                         await cmd.Execute(new BotCommandModel { Message = callback.Message });
+                    }
                 }
                 continue;
             }
 
             if (update.Message is null) continue;
 
-            var model = BotCommandModel.FromMessage(update.Message, "/");
+            var message = update.Message;
+            var messageChatId = message.Chat?.Id;
+            var messageSenderId = message.From?.Id ?? messageChatId;
+
+            if (!await EnsureAuthorizedAsync(
+                    messageSenderId,
+                    messageChatId,
+                    "message",
+                    respond: true))
+            {
+                continue;
+            }
+
+            var model = BotCommandModel.FromMessage(message, "/");
             if (model == null) continue;
 
             var command = Commands.FirstOrDefault(c => c.Command.Equals(model.Command, StringComparison.OrdinalIgnoreCase)) ??
@@ -219,6 +273,15 @@ public static class Program
 
             if (command.ValidateModel(model))
             {
+                if (!await EnsureAuthorizedAsync(
+                        messageSenderId,
+                        messageChatId,
+                        "command execution",
+                        respond: false))
+                {
+                    continue;
+                }
+
                 await command.Execute(model);
             }
             else
@@ -231,6 +294,43 @@ public static class Program
                 );
             }
         }
+    }
+
+    private static async Task<bool> EnsureAuthorizedAsync(
+        long? senderId,
+        long? chatId,
+        string updateDescription,
+        bool respond,
+        Func<Task>? unauthorizedResponder = null)
+    {
+        var effectiveSenderId = senderId ?? chatId;
+
+        if (effectiveSenderId == OwnerId)
+        {
+            return true;
+        }
+
+        if (effectiveSenderId is null)
+        {
+            Console.WriteLine($"Ignoring {updateDescription} with missing sender information.");
+            return false;
+        }
+
+        Console.WriteLine($"Unauthorized {updateDescription} from {effectiveSenderId}.");
+
+        if (respond)
+        {
+            if (unauthorizedResponder is not null)
+            {
+                await unauthorizedResponder();
+            }
+            else if (chatId.HasValue)
+            {
+                await Bot.SendMessage(chatId.Value, UnauthorizedResponse);
+            }
+        }
+
+        return false;
     }
 
     public static async Task SendErrorAsync(Message message, Exception ex, bool includeStackTrace = false)
