@@ -1459,22 +1459,15 @@ public static class CommandRegistry
             Execute = async model =>
             {
                 var ipAddress = await Utils.GetIpAddressAsync();
-                HttpClient httpClient = new HttpClient();
-                string ipApiResponse = await httpClient.GetStringAsync("http://ip-api.com/xml/" + ipAddress);
-                System.Xml.XmlDocument xmlDocument = new System.Xml.XmlDocument();
-                xmlDocument.LoadXml(ipApiResponse);
-
-                TextReader xmlDocumentReader = new StringReader(xmlDocument.ChildNodes[1].OuterXml);
-                var serializer = new System.Xml.Serialization.XmlSerializer(typeof(NetworkInfo));
-                NetworkInfo ni = serializer.Deserialize(xmlDocumentReader) as NetworkInfo;
+                var networkInfo = await Utils.GetFromJsonAsync<NetworkInfo>("http://ip-api.com/json/" + ipAddress);
 
                 string networkInformationString = "Network information:\n\n" +
                 $"IP: {ipAddress}\n" +
-                $"ISP: {ni.Isp}\n" +
-                $"Country: {ni.Country}\n" +
-                $"City: {ni.City}\n" +
-                $"Timezone: {ni.Timezone}\n" +
-                $"Country Code: {ni.CountryCode}";
+                $"ISP: {networkInfo.Isp}\n" +
+                $"Country: {networkInfo.Country}\n" +
+                $"City: {networkInfo.City}\n" +
+                $"Timezone: {networkInfo.Timezone}\n" +
+                $"Country Code: {networkInfo.CountryCode}";
 
                 await Program.Bot.SendMessage(model.Message.Chat.Id, networkInformationString);
             }
