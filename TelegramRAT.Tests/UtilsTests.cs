@@ -19,7 +19,7 @@ public class UtilsTests
         var responses = new Dictionary<string, string>
         {
             ["https://api.ipify.org/?format=json"] = "{\"ip\":\"203.0.113.42\"}",
-            ["http://ip-api.com/json/203.0.113.42"] = "{\"status\":\"success\",\"isp\":\"ExampleISP\",\"country\":\"Wonderland\",\"city\":\"Fictionville\",\"timezone\":\"UTC+0\",\"countryCode\":\"WL\"}"
+            ["http://ip-api.com/json/203.0.113.42"] = "{\"status\":\"success\",\"isp\":\"ExampleISP\",\"country\":\"Wonderland\",\"city\":\"Fictionville\",\"timezone\":\"UTC+0\",\"countryCode\":\"WL\",\"lat\":51.5074,\"lon\":-0.1278}"
         };
 
         var handler = new StubHttpMessageHandler(responses);
@@ -39,6 +39,18 @@ public class UtilsTests
             Assert.Equal("Fictionville", networkInfo.City);
             Assert.Equal("UTC+0", networkInfo.Timezone);
             Assert.Equal("WL", networkInfo.CountryCode);
+            Assert.Equal(51.5074, networkInfo.Lat.GetValueOrDefault());
+            Assert.Equal(-0.1278, networkInfo.Lon.GetValueOrDefault());
+
+            var networkInformationString = "Network information:\n\n" +
+                $"IP: {ipAddress}\n" +
+                $"ISP: {networkInfo.Isp}\n" +
+                $"Country: {networkInfo.Country}\n" +
+                $"City: {networkInfo.City}\n" +
+                $"Timezone: {networkInfo.Timezone}\n" +
+                $"Country Code: {networkInfo.CountryCode}";
+
+            Assert.Contains("Network information:", networkInformationString);
         }
 
         Assert.Equal(2, handler.RequestCount);
