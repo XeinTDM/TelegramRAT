@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -197,6 +198,46 @@ public class CommandRegistryTests
             if (Directory.Exists(tempRoot))
                 Directory.Delete(tempRoot, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task PowerCommand_Logoff_UsesShutdownLogoff()
+    {
+        var sentMessages = new List<string>();
+        var botMock = CreateBotMock(sentMessages);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "power");
+
+        var originalStarter = CommandRegistry.ProcessStarter;
+        ProcessStartInfo? capturedStartInfo = null;
+
+        try
+        {
+            CommandRegistry.ProcessStarter = info =>
+            {
+                capturedStartInfo = info;
+                return null;
+            };
+
+            var model = CreateModel("power", new[] { "logoff" });
+
+            await command.Execute(model);
+        }
+        finally
+        {
+            CommandRegistry.ProcessStarter = originalStarter;
+        }
+
+        Assert.Single(sentMessages);
+        Assert.Equal("Done!", sentMessages[0]);
+
+        Assert.NotNull(capturedStartInfo);
+        Assert.Equal("cmd.exe", capturedStartInfo!.FileName);
+        Assert.Equal("/c shutdown /l", capturedStartInfo.Arguments);
+        Assert.True(capturedStartInfo.CreateNoWindow);
     }
 
     [Fact]
