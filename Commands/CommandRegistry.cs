@@ -1207,21 +1207,43 @@ public static class CommandRegistry
             Example = "/openurl google.com",
             Execute = async model =>
             {
-                string url = model.RawArgs;
-                if (url.Contains("://") is false)
+                try
                 {
-                    url = "https://" + url;
+                    var urlInput = (model.RawArgs ?? string.Empty).Trim();
+
+                    if (!Uri.TryCreate(urlInput, UriKind.Absolute, out var uri))
+                    {
+                        if (!string.IsNullOrEmpty(urlInput) && Uri.TryCreate($"https://{urlInput}", UriKind.Absolute, out var httpsUri))
+                        {
+                            uri = httpsUri;
+                        }
+                        else
+                        {
+                            await Program.SendErrorAsync(model.Message, new ArgumentException("Invalid URL provided."));
+                            return;
+                        }
+                    }
+
+                    var startInfo = new ProcessStartInfo
+                    {
+                        FileName = uri.AbsoluteUri,
+                        UseShellExecute = true
+                    };
+
+                    var process = Process.Start(startInfo);
+
+                    if (process == null)
+                    {
+                        await Program.SendErrorAsync(model.Message, new InvalidOperationException("Failed to launch the URL."));
+                        return;
+                    }
+
+                    await Program.Bot.SendMessage(model.Message.Chat.Id, "Url opened!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                 }
-                ProcessStartInfo info = new ProcessStartInfo()
+                catch (Exception ex)
                 {
-                    FileName = "cmd.exe",
-                    Arguments = $"/c start {url}",
-                    CreateNoWindow = true
-                };
-
-                Process.Start(info);
-
-                await Program.Bot.SendMessage(model.Message.Chat.Id, "Url opened!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                    await Program.ReportExceptionAsync(model.Message, ex);
+                }
             }
         });
     }
