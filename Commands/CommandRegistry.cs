@@ -241,6 +241,7 @@ public static class CommandRegistry
         commandsList.Add(new BotCommand
         {
             Command = "processkill",
+            ArgsCount = -2,
             Description = "Kill process or processes by name or id.",
             Example = "/processkill id:1234",
             Execute = async model =>
