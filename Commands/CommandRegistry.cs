@@ -491,9 +491,32 @@ public static class CommandRegistry
             {
                 try
                 {
-                    if (Directory.Exists(model.RawArgs))
+                    var targetDirectoryInput = model.Args.Length > 0
+                        ? string.Join(' ', model.Args)
+                        : model.RawArgs;
+
+                    targetDirectoryInput = targetDirectoryInput?.Trim() ?? string.Empty;
+
+                    if (targetDirectoryInput.Length >= 2)
                     {
-                        Directory.SetCurrentDirectory(model.Args[0]);
+                        if ((targetDirectoryInput.StartsWith("\"") && targetDirectoryInput.EndsWith("\"")) ||
+                            (targetDirectoryInput.StartsWith("'") && targetDirectoryInput.EndsWith("'")))
+                        {
+                            targetDirectoryInput = targetDirectoryInput[1..^1];
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(targetDirectoryInput))
+                    {
+                        await Program.SendErrorAsync(model.Message, new DirectoryNotFoundException("The specified directory does not exist."));
+                        return;
+                    }
+
+                    var targetDirectory = Path.GetFullPath(targetDirectoryInput);
+
+                    if (Directory.Exists(targetDirectory))
+                    {
+                        Directory.SetCurrentDirectory(targetDirectory);
                         await Program.SendSuccessAsync(model.Message, $"Directory changed to: <code>{Directory.GetCurrentDirectory()}</code>");
                     }
                     else

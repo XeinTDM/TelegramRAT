@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Moq;
@@ -137,6 +138,59 @@ public class CommandRegistryTests
 
         Assert.Single(sentMessages);
         Assert.Equal("Need an expression or file to execute", sentMessages[0]);
+    }
+
+    [Fact]
+    public async Task CdCommand_WithQuotedPathChangesDirectory()
+    {
+        var sentMessages = new List<string>();
+        var botMock = CreateBotMock(sentMessages);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "cd");
+
+        var originalDirectory = Directory.GetCurrentDirectory();
+        var tempRoot = Path.Combine(Path.GetTempPath(), "TelegramRAT Tests", Guid.NewGuid().ToString());
+        var targetDirectory = Path.Combine(tempRoot, "Program Files");
+        Directory.CreateDirectory(targetDirectory);
+
+        try
+        {
+            var model = new BotCommandModel
+            {
+                Command = "cd",
+                Args = new[] { targetDirectory },
+                RawArgs = $"\"{targetDirectory}\"",
+                Message = new Message
+                {
+                    Chat = new Chat { Id = 123 },
+                    From = new User { Id = 321, FirstName = "tester" },
+                    MessageId = 7,
+                    Date = DateTime.UtcNow
+                }
+            };
+
+            await command.Execute(model);
+
+            var expectedDirectory = Path.GetFullPath(targetDirectory);
+            var actualDirectory = Directory.GetCurrentDirectory();
+            var comparison = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
+            Assert.True(string.Equals(expectedDirectory, actualDirectory, comparison));
+            Assert.Single(sentMessages);
+            Assert.Contains(expectedDirectory, sentMessages[0]);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
     }
 
     [Fact]
