@@ -43,7 +43,9 @@ public static class CommandRegistry
         {
             FileName = fileName,
             Arguments = arguments,
-            CreateNoWindow = true
+            CreateNoWindow = true,
+            UseShellExecute = false,
+            WindowStyle = ProcessWindowStyle.Hidden
         };
 
         ProcessStarter(startInfo);
