@@ -439,4 +439,104 @@ public class CommandRegistryTests
             keylogField.SetValue(null, false);
         }
     }
+
+    [Fact]
+    public async Task DirCommand_WithNoArguments_ListsCurrentDirectoryContents()
+    {
+        var sentMessages = new List<string>();
+        var botMock = CreateBotMock(sentMessages);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "dir");
+
+        var originalDirectory = Directory.GetCurrentDirectory();
+        var tempRoot = Path.Combine(Path.GetTempPath(), "TelegramRAT Tests", Guid.NewGuid().ToString());
+        var expectedFile = Path.Combine(tempRoot, "file.txt");
+        var expectedDirectory = Path.Combine(tempRoot, "folder");
+
+        Directory.CreateDirectory(tempRoot);
+        Directory.CreateDirectory(expectedDirectory);
+        await File.WriteAllTextAsync(expectedFile, "data");
+
+        try
+        {
+            Directory.SetCurrentDirectory(tempRoot);
+
+            var model = CreateModel("dir");
+
+            await command.Execute(model);
+
+            Assert.NotEmpty(sentMessages);
+            var message = sentMessages.Single();
+            Assert.Contains("<b>Files:</b>", message);
+            Assert.Contains("file.txt", message);
+            Assert.Contains("folder", message);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DirCommand_WithExplicitPath_UsesProvidedDirectory()
+    {
+        var sentMessages = new List<string>();
+        var botMock = CreateBotMock(sentMessages);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "dir");
+
+        var originalDirectory = Directory.GetCurrentDirectory();
+        var tempRoot = Path.Combine(Path.GetTempPath(), "TelegramRAT Tests", Guid.NewGuid().ToString());
+        var currentDirectory = Path.Combine(tempRoot, "current");
+        var targetDirectory = Path.Combine(tempRoot, "target path");
+        var unexpectedFile = Path.Combine(currentDirectory, "current.txt");
+        var expectedFile = Path.Combine(targetDirectory, "target.txt");
+
+        Directory.CreateDirectory(currentDirectory);
+        Directory.CreateDirectory(targetDirectory);
+        await File.WriteAllTextAsync(unexpectedFile, "current");
+        await File.WriteAllTextAsync(expectedFile, "target");
+
+        try
+        {
+            Directory.SetCurrentDirectory(currentDirectory);
+
+            var model = new BotCommandModel
+            {
+                Command = "dir",
+                Args = new[] { targetDirectory },
+                RawArgs = targetDirectory,
+                Message = new Message
+                {
+                    Chat = new Chat { Id = 123 },
+                    From = new User { Id = 321, FirstName = "tester" },
+                    MessageId = 7,
+                    Date = DateTime.UtcNow
+                }
+            };
+
+            await command.Execute(model);
+
+            Assert.NotEmpty(sentMessages);
+            var message = sentMessages.Single();
+            Assert.Contains("target.txt", message);
+            Assert.DoesNotContain("current.txt", message);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
 }
