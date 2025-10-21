@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Text;
 
@@ -106,8 +107,27 @@ static class WinAPI
     [DllImport(u32, EntryPoint = "GetAsyncKeyState")]
     public static extern short GetAsyncKeyState(uint key);
 
-    [DllImport(u32, EntryPoint = "MapVirtualKeyA")]
-    public static extern char MapVirtualKey(uint keyCode, uint mapType = 2);
+    [DllImport(u32, EntryPoint = "GetKeyboardState")]
+    public static extern bool GetKeyboardState(byte[] keyState);
+
+    [DllImport(u32, EntryPoint = "GetKeyState")]
+    public static extern short GetKeyState(int virtualKeyCode);
+
+    [DllImport(u32, EntryPoint = "MapVirtualKeyW")]
+    public static extern uint MapVirtualKey(uint keyCode, uint mapType = 0);
+
+    [DllImport(u32, EntryPoint = "ToUnicodeEx")]
+    public static extern int ToUnicodeEx(
+        uint virtualKey,
+        uint scanCode,
+        byte[] keyState,
+        StringBuilder receivingBuffer,
+        int bufferSize,
+        uint flags,
+        IntPtr inputLocaleHandle);
+
+    [DllImport(u32, EntryPoint = "GetKeyboardLayout")]
+    public static extern IntPtr GetKeyboardLayout(uint threadId);
 
     [DllImport(u32, EntryPoint = "PostMessageA")]
     public static extern bool PostMessage(IntPtr hWnd, int msg, int wParam, int lParam);
@@ -189,4 +209,124 @@ static class WinAPI
 
     [DllImport(u32, EntryPoint = "GetClientRect", SetLastError = true)]
     public static extern bool GetClientRect(IntPtr hWnd, out Rectangle rect);
+
+    public readonly struct KeyTranslationResult
+    {
+        public KeyTranslationResult(string text, string hexFallback, bool containsTranslatedCharacters, bool containsFallbackPlaceholders)
+        {
+            Text = text;
+            HexFallback = hexFallback;
+            ContainsTranslatedCharacters = containsTranslatedCharacters;
+            ContainsFallbackPlaceholders = containsFallbackPlaceholders;
+        }
+
+        public string Text { get; }
+        public string HexFallback { get; }
+        public bool ContainsTranslatedCharacters { get; }
+        public bool ContainsFallbackPlaceholders { get; }
+    }
+
+    public static KeyTranslationResult TranslateKeyCombination(IReadOnlyCollection<uint> keys)
+    {
+        if (keys == null || keys.Count == 0)
+            return new KeyTranslationResult(string.Empty, string.Empty, containsTranslatedCharacters: false, containsFallbackPlaceholders: false);
+
+        var keyboardState = new byte[256];
+        if (!GetKeyboardState(keyboardState))
+        {
+            Array.Clear(keyboardState, 0, keyboardState.Length);
+        }
+
+        foreach (var key in keys)
+        {
+            if (key < keyboardState.Length)
+            {
+                keyboardState[key] |= 0x80;
+                if (IsToggleKey(key) && (GetKeyState((int)key) & 0x1) != 0)
+                {
+                    keyboardState[key] |= 0x01;
+                }
+            }
+        }
+
+        var layout = GetCurrentKeyboardLayout();
+
+        var mappedBuilder = new StringBuilder();
+        var fallbackParts = new List<string>(keys.Count);
+        var containsTranslatedCharacters = false;
+        var containsFallbackPlaceholders = false;
+
+        foreach (var key in keys)
+        {
+            fallbackParts.Add($"0x{key:X2}");
+
+            if (IsModifierKey(key))
+                continue;
+
+            var translated = TranslateKey(key, keyboardState, layout);
+            if (!string.IsNullOrEmpty(translated))
+            {
+                mappedBuilder.Append(translated);
+                containsTranslatedCharacters = true;
+            }
+            else
+            {
+                mappedBuilder.Append($"[0x{key:X2}]");
+                containsFallbackPlaceholders = true;
+            }
+        }
+
+        return new KeyTranslationResult(
+            mappedBuilder.ToString(),
+            string.Join(" ", fallbackParts),
+            containsTranslatedCharacters,
+            containsFallbackPlaceholders);
+    }
+
+    static IntPtr GetCurrentKeyboardLayout()
+    {
+        var foregroundWindow = GetForegroundWindow();
+        if (foregroundWindow != IntPtr.Zero)
+        {
+            var threadId = GetWindowThreadProcessId(foregroundWindow, out _);
+            var layout = GetKeyboardLayout((uint)threadId);
+            if (layout != IntPtr.Zero)
+                return layout;
+        }
+
+        return GetKeyboardLayout(0);
+    }
+
+    static string TranslateKey(uint key, byte[] keyboardState, IntPtr layout)
+    {
+        var buffer = new StringBuilder(8);
+        var scanCode = MapVirtualKey(key, 0);
+        var result = ToUnicodeEx(key, scanCode, keyboardState, buffer, buffer.Capacity, 0, layout);
+
+        if (result > 0)
+        {
+            return buffer.ToString(0, result);
+        }
+
+        if (result < 0)
+        {
+            ToUnicodeEx(key, scanCode, keyboardState, buffer, buffer.Capacity, 0, layout);
+        }
+
+        return string.Empty;
+    }
+
+    static bool IsModifierKey(uint key) => key switch
+    {
+        0x10 or 0x11 or 0x12 or 0x14 or 0x5B or 0x5C => true,
+        0xA0 or 0xA1 or 0xA2 or 0xA3 or 0xA4 or 0xA5 => true,
+        _ => false
+    };
+
+    static bool IsToggleKey(uint key) => key switch
+    {
+        0x14 or 0x90 or 0x91 => true,
+        _ => false
+    };
 }
+
