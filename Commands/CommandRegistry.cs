@@ -884,6 +884,7 @@ public static class CommandRegistry
 
                 try
                 {
+                    bool responseSent = false;
                     switch (model.Args[0].ToLower())
                     {
                         case "i":
@@ -899,18 +900,21 @@ public static class CommandRegistry
                             {
                                 mouseInfo = "Unable to get info about cursor";
                             }
+                            responseSent = true;
                             await Program.Bot.SendMessage(model.Message.Chat.Id, mouseInfo, ParseMode.Html, replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                             return;
 
                         case "to":
                             mouseSimulator.MoveMouseTo(Convert.ToDouble(model.Args[1]) * (ushort.MaxValue / WinAPI.GetScreenBounds().Width),
                             Convert.ToDouble(model.Args[2]) * (ushort.MaxValue / WinAPI.GetScreenBounds().Height));
+                            responseSent = true;
                             await Program.Bot.SendMessage(model.Message.Chat.Id, "Done!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                             break;
 
                         case "by":
                             mouseSimulator.MoveMouseBy(Convert.ToInt32(model.Args[1]),
                             Convert.ToInt32(model.Args[2]));
+                            responseSent = true;
                             await Program.Bot.SendMessage(model.Message.Chat.Id, "Done!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                             break;
 
@@ -930,12 +934,14 @@ public static class CommandRegistry
                                         mouseSimulator.LeftButtonClick();
                                         break;
                                     default:
+                                        responseSent = true;
                                         await Program.Bot.SendMessage(model.Message.Chat.Id, "Type whether button you want to click(right or left).", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                                         return;
                                 }
                             }
                             else
                             {
+                                responseSent = true;
                                 await Program.Bot.SendMessage(model.Message.Chat.Id, "Type whether button you want to click(right or left).", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                             }
                             break;
@@ -956,12 +962,14 @@ public static class CommandRegistry
                                         mouseSimulator.LeftButtonDoubleClick();
                                         break;
                                     default:
+                                        responseSent = true;
                                         await Program.Bot.SendMessage(model.Message.Chat.Id, "Type whether button you want to double click(right or left).", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                                         return;
                                 }
                             }
                             else
                             {
+                                responseSent = true;
                                 await Program.Bot.SendMessage(model.Message.Chat.Id, "Type whether button you want to double click(right or left).", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                             }
                             break;
@@ -982,6 +990,7 @@ public static class CommandRegistry
                                         mouseSimulator.LeftButtonDown();
                                         break;
                                     default:
+                                        responseSent = true;
                                         await Program.Bot.SendMessage(model.Message.Chat.Id, "Type whether button you want to set down(right or left).", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                                         return;
                                 }
@@ -1006,6 +1015,7 @@ public static class CommandRegistry
                                         mouseSimulator.LeftButtonUp();
                                         break;
                                     default:
+                                        responseSent = true;
                                         await Program.Bot.SendMessage(model.Message.Chat.Id, "Type whether button you want to set up(right or left).", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                                         return;
                                 }
@@ -1029,12 +1039,14 @@ public static class CommandRegistry
                                 }
                                 else
                                 {
+                                    responseSent = true;
                                     await Program.Bot.SendMessage(model.Message.Chat.Id, "The number must be an integer.", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                                     return;
                                 }
                             }
                             else
                             {
+                                responseSent = true;
                                 await Program.Bot.SendMessage(model.Message.Chat.Id, "Type scroll steps you want to simulate.", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                             }
                             break;
@@ -1049,21 +1061,27 @@ public static class CommandRegistry
                                 }
                                 else
                                 {
+                                    responseSent = true;
                                     await Program.Bot.SendMessage(model.Message.Chat.Id, "The number must be an integer.", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                                     return;
                                 }
                             }
                             else
                             {
+                                responseSent = true;
                                 await Program.Bot.SendMessage(model.Message.Chat.Id, "Type scroll steps you want to simulate.", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                             }
                             break;
 
                         default:
+                            responseSent = true;
                             await Program.Bot.SendMessage(model.Message.Chat.Id, "No such use for this command.", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                             return;
                     }
-                    await Program.Bot.SendMessage(model.Message.Chat.Id, "Done", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                    if (!responseSent)
+                    {
+                        await Program.Bot.SendMessage(model.Message.Chat.Id, "Done", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                    }
 
                 }
                 catch (Exception ex)
