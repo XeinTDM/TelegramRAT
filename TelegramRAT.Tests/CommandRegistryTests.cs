@@ -358,6 +358,86 @@ public class CommandRegistryTests
     }
 
     [Fact]
+    public async Task PowerCommand_Off_UsesShutdownPowerOff()
+    {
+        var sentMessages = new List<string>();
+        var botMock = CreateBotMock(sentMessages);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "power");
+
+        var originalStarter = CommandRegistry.ProcessStarter;
+        ProcessStartInfo? capturedStartInfo = null;
+
+        try
+        {
+            CommandRegistry.ProcessStarter = info =>
+            {
+                capturedStartInfo = info;
+                return null;
+            };
+
+            var model = CreateModel("power", new[] { "off" });
+
+            await command.Execute(model);
+        }
+        finally
+        {
+            CommandRegistry.ProcessStarter = originalStarter;
+        }
+
+        Assert.Single(sentMessages);
+        Assert.Equal("Done!", sentMessages[0]);
+
+        Assert.NotNull(capturedStartInfo);
+        Assert.Equal("cmd.exe", capturedStartInfo!.FileName);
+        Assert.Equal("/c shutdown /s /t 1", capturedStartInfo.Arguments);
+        Assert.True(capturedStartInfo.CreateNoWindow);
+    }
+
+    [Fact]
+    public async Task PowerCommand_Restart_UsesShutdownRestart()
+    {
+        var sentMessages = new List<string>();
+        var botMock = CreateBotMock(sentMessages);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "power");
+
+        var originalStarter = CommandRegistry.ProcessStarter;
+        ProcessStartInfo? capturedStartInfo = null;
+
+        try
+        {
+            CommandRegistry.ProcessStarter = info =>
+            {
+                capturedStartInfo = info;
+                return null;
+            };
+
+            var model = CreateModel("power", new[] { "restart" });
+
+            await command.Execute(model);
+        }
+        finally
+        {
+            CommandRegistry.ProcessStarter = originalStarter;
+        }
+
+        Assert.Single(sentMessages);
+        Assert.Equal("Done!", sentMessages[0]);
+
+        Assert.NotNull(capturedStartInfo);
+        Assert.Equal("cmd.exe", capturedStartInfo!.FileName);
+        Assert.Equal("/c shutdown /r /t 1", capturedStartInfo.Arguments);
+        Assert.True(capturedStartInfo.CreateNoWindow);
+    }
+
+    [Fact]
     public async Task DownloadCommand_WithRelativePath_SendsFileFromCurrentDirectory()
     {
         var sentMessages = new List<string>();
