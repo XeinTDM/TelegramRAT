@@ -43,13 +43,20 @@ static class WinAPI
         SM_CYSCREEN = 1,
         SM_CXFULLSCREEN = 16,
         SM_CYFULLSCREEN = 17,
+        SM_XVIRTUALSCREEN = 76,
+        SM_YVIRTUALSCREEN = 77,
         SM_CXVIRTUALSCREEN = 78,
         SM_CYVIRTUALSCREEN = 79
     }
 
     public static Rectangle GetScreenBounds()
     {
-        return new Rectangle(0, 0, GetSystemMetrics((int)MetricsIndexes.SM_CXVIRTUALSCREEN), GetSystemMetrics((int)MetricsIndexes.SM_CYSCREEN));
+        int originX = GetSystemMetrics((int)MetricsIndexes.SM_XVIRTUALSCREEN);
+        int originY = GetSystemMetrics((int)MetricsIndexes.SM_YVIRTUALSCREEN);
+        int width = GetSystemMetrics((int)MetricsIndexes.SM_CXVIRTUALSCREEN);
+        int height = GetSystemMetrics((int)MetricsIndexes.SM_CYVIRTUALSCREEN);
+
+        return new Rectangle(originX, originY, width, height);
     }
 
 
