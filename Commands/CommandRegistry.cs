@@ -88,7 +88,7 @@ public static class CommandRegistry
             Command = "help",
             Description = "Show description of other commands.",
             Example = "/help screenshot",
-            ArgsCount = 1,
+            ArgsCount = -1,
             Execute = async model =>
             {
                 if (!model.Args.Any())
