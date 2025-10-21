@@ -36,11 +36,13 @@ public class NetworkInfo
 
     [XmlElement(ElementName = "lat")]
     [JsonPropertyName("lat")]
-    public string Lat { get; set; }
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+    public double? Lat { get; set; }
 
     [XmlElement(ElementName = "lon")]
     [JsonPropertyName("lon")]
-    public string Lon { get; set; }
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+    public double? Lon { get; set; }
 
     [XmlElement(ElementName = "timezone")]
     [JsonPropertyName("timezone")]
