@@ -49,6 +49,26 @@ public static class CommandRegistry
         ProcessStarter(startInfo);
     }
 
+    private static string GetSanitizedPath(BotCommandModel model)
+    {
+        var pathInput = model.Args.Length > 0
+            ? string.Join(' ', model.Args)
+            : model.RawArgs;
+
+        pathInput = pathInput?.Trim() ?? string.Empty;
+
+        if (pathInput.Length >= 2)
+        {
+            if ((pathInput.StartsWith("\"") && pathInput.EndsWith("\"")) ||
+                (pathInput.StartsWith("'") && pathInput.EndsWith("'")))
+            {
+                pathInput = pathInput[1..^1];
+            }
+        }
+
+        return pathInput;
+    }
+
     public static void InitializeCommands(ICollection<BotCommand> commandsList)
     {
         commandsList.Clear();
@@ -447,11 +467,14 @@ public static class CommandRegistry
             {
                 try
                 {
-                    string curdir = model.Args.Length > 0 ? model.RawArgs : Directory.GetCurrentDirectory();
+                    var targetDirectoryInput = GetSanitizedPath(model);
+                    string curdir = !string.IsNullOrWhiteSpace(targetDirectoryInput)
+                        ? targetDirectoryInput
+                        : Directory.GetCurrentDirectory();
 
                     if (!Directory.Exists(curdir))
                     {
-                        await Program.SendErrorAsync(model.Message, new DirectoryNotFoundException($"The directory \"{curdir}\" does not exist."));
+                        await Program.SendErrorAsync(model.Message, new DirectoryNotFoundException($"The directory \"{targetDirectoryInput}\" does not exist."));
                         return;
                     }
 
@@ -578,7 +601,7 @@ public static class CommandRegistry
             {
                 try
                 {
-                    string filePath = model.RawArgs;
+                    var filePath = GetSanitizedPath(model);
                     var baseDirectory = Directory.GetCurrentDirectory();
                     var normalizedPath = Path.IsPathRooted(filePath)
                         ? Path.GetFullPath(filePath)
@@ -642,9 +665,11 @@ public static class CommandRegistry
             {
                 try
                 {
-                    if (File.Exists(model.RawArgs))
+                    var targetPath = GetSanitizedPath(model);
+
+                    if (File.Exists(targetPath))
                     {
-                        File.Delete(model.RawArgs);
+                        File.Delete(targetPath);
                         await Program.Bot.SendMessage(model.Message.Chat.Id, "Done!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                     }
                     else
@@ -672,9 +697,11 @@ public static class CommandRegistry
 
                 try
                 {
-                    if (!Directory.Exists(model.RawArgs))
+                    var targetDirectory = GetSanitizedPath(model);
+
+                    if (!Directory.Exists(targetDirectory))
                     {
-                        Directory.CreateDirectory(model.RawArgs);
+                        Directory.CreateDirectory(targetDirectory);
                         await Program.Bot.SendMessage(model.Message.Chat.Id, "Done!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                     }
                     else
@@ -699,9 +726,11 @@ public static class CommandRegistry
             {
                 try
                 {
-                    if (Directory.Exists(model.RawArgs))
+                    var targetDirectory = GetSanitizedPath(model);
+
+                    if (Directory.Exists(targetDirectory))
                     {
-                        Directory.Delete(model.RawArgs);
+                        Directory.Delete(targetDirectory);
                     }
                     else
                     {
