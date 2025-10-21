@@ -9,6 +9,8 @@ static class WinAPI
 {
     const string u32 = "user32.dll";
 
+    const int ERROR_TIMEOUT = 1460;
+
 
     [DllImport(u32, EntryPoint = "MessageBox")]
     static extern int MessageBox(IntPtr ParentWindow, string Text, string Caption, uint Type);
@@ -97,6 +99,9 @@ static class WinAPI
     public const int SC_MAXIMIZE = 0xF030;
     public const int SC_RESTORE = 0xF120;
     public const int SC_CLOSE = 0xF060;
+    public const int SC_MONITORPOWER = 0xF170;
+
+    public const int HWND_BROADCAST = 0xFFFF;
 
     [DllImport(u32, EntryPoint = "CloseWindow")]
     public static extern bool MinimizeWindow(IntPtr handle);
@@ -175,7 +180,48 @@ static class WinAPI
         return rect;
     }
 
-    public const int SC_MONITORPOWER = 0xF170;
+    [Flags]
+    public enum SendMessageTimeoutFlags : uint
+    {
+        SMTO_NORMAL = 0x0000,
+        SMTO_BLOCK = 0x0001,
+        SMTO_ABORTIFHUNG = 0x0002,
+        SMTO_NOTIMEOUTIFNOTHUNG = 0x0008
+    }
+
+    [DllImport(u32, EntryPoint = "SendMessageTimeout", CharSet = CharSet.Auto, SetLastError = true)]
+    static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd,
+        uint Msg,
+        IntPtr wParam,
+        IntPtr lParam,
+        SendMessageTimeoutFlags fuFlags,
+        uint uTimeout,
+        out IntPtr lpdwResult);
+
+    public static bool TryBroadcastMonitorPowerState(int state, out bool timedOut, uint timeoutMilliseconds = 2000)
+    {
+        IntPtr result;
+        IntPtr sendResult = SendMessageTimeout(
+            new IntPtr(HWND_BROADCAST),
+            (uint)WM_SYSCOMMAND,
+            new IntPtr(SC_MONITORPOWER),
+            new IntPtr(state),
+            SendMessageTimeoutFlags.SMTO_ABORTIFHUNG | SendMessageTimeoutFlags.SMTO_NOTIMEOUTIFNOTHUNG,
+            timeoutMilliseconds,
+            out result);
+
+        if (sendResult != IntPtr.Zero)
+        {
+            timedOut = false;
+            return true;
+        }
+
+        int lastError = Marshal.GetLastWin32Error();
+        timedOut = lastError == ERROR_TIMEOUT;
+
+        return lastError == 0;
+    }
 
     [DllImport(u32, EntryPoint = "IsWindow")]
     public static extern bool IsWindow(IntPtr hWnd);

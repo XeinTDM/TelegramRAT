@@ -11,6 +11,7 @@ using Telegram.Bot.Types.InputFiles;
 using System.Drawing;
 using Telegram.Bot;
 using WindowsInput;
+using WindowsInput.Native;
 using NAudio.Wave;
 using System.Text;
 using System.Net;
@@ -49,6 +50,12 @@ public static class CommandRegistry
         };
 
         ProcessStarter(startInfo);
+    }
+
+    private static void SimulateMonitorPowerOffFallback()
+    {
+        var keyboardSimulator = new KeyboardSimulator(new InputSimulator());
+        keyboardSimulator.ModifiedKeyStroke(VirtualKeyCode.LWIN, VirtualKeyCode.VK_L);
     }
 
     private static string GetSanitizedPath(BotCommandModel model)
@@ -395,11 +402,27 @@ public static class CommandRegistry
                     switch (model.Args[0])
                     {
                         case "off":
-                            bool status = WinAPI.PostMessage(WinAPI.GetForegroundWindow(), WinAPI.WM_SYSCOMMAND, WinAPI.SC_MONITORPOWER, 2);
-                            await Program.Bot.SendMessage(model.Message.Chat.Id, status ? "Monitor turned off" : "Failed", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                            bool broadcastTimedOut;
+                            bool broadcastSucceeded = WinAPI.TryBroadcastMonitorPowerState(2, out broadcastTimedOut);
+
+                            if (broadcastSucceeded)
+                            {
+                                await Program.Bot.SendMessage(model.Message.Chat.Id, "Monitor turned off", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                            }
+                            else
+                            {
+                                SimulateMonitorPowerOffFallback();
+
+                                string response = broadcastTimedOut
+                                    ? "Monitor turned off (fallback after timeout)"
+                                    : "Monitor turned off (fallback triggered)";
+
+                                await Program.Bot.SendMessage(model.Message.Chat.Id, response, replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
+                            }
                             break;
 
                         case "on":
+                            WinAPI.TryBroadcastMonitorPowerState(-1, out _);
                             new MouseSimulator(new InputSimulator()).MoveMouseBy(0, 0);
                             await Program.Bot.SendMessage(model.Message.Chat.Id, "Monitor turned on", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                             break;
