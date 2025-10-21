@@ -907,8 +907,10 @@ public static class CommandRegistry
                             return;
 
                         case "to":
-                            mouseSimulator.MoveMouseTo(Convert.ToDouble(model.Args[1]) * (ushort.MaxValue / WinAPI.GetScreenBounds().Width),
-                            Convert.ToDouble(model.Args[2]) * (ushort.MaxValue / WinAPI.GetScreenBounds().Height));
+                            Rectangle virtualBounds = WinAPI.GetScreenBounds();
+                            double normalizedX = (Convert.ToDouble(model.Args[1]) - virtualBounds.X) * ((double)ushort.MaxValue / virtualBounds.Width);
+                            double normalizedY = (Convert.ToDouble(model.Args[2]) - virtualBounds.Y) * ((double)ushort.MaxValue / virtualBounds.Height);
+                            mouseSimulator.MoveMouseTo(normalizedX, normalizedY);
                             responseSent = true;
                             await Program.Bot.SendMessage(model.Message.Chat.Id, "Done!", replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
                             break;
@@ -1129,7 +1131,7 @@ public static class CommandRegistry
                     using Bitmap bitmap = new Bitmap(bounds.Width, bounds.Height);
                     using Graphics graphics = Graphics.FromImage(bitmap);
                     using MemoryStream screenshotStream = new MemoryStream();
-                    graphics.CopyFromScreen(System.Drawing.Point.Empty, System.Drawing.Point.Empty, bounds.Size);
+                    graphics.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
 
                     bitmap.Save(screenshotStream, ImageFormat.Png);
 
