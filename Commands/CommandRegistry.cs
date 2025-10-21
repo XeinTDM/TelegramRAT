@@ -560,14 +560,19 @@ public static class CommandRegistry
                 try
                 {
                     string filePath = model.RawArgs;
-                    if (!File.Exists(Directory.GetCurrentDirectory() + "\\" + filePath))
+                    var baseDirectory = Directory.GetCurrentDirectory();
+                    var normalizedPath = Path.IsPathRooted(filePath)
+                        ? Path.GetFullPath(filePath)
+                        : Path.GetFullPath(Path.Combine(baseDirectory, filePath));
+
+                    if (!File.Exists(normalizedPath))
                     {
-                        await Program.Bot.SendMessage(model.Message.Chat.Id, $"There is no file \"{filePath}\" at dir {Directory.GetCurrentDirectory()}");
+                        await Program.Bot.SendMessage(model.Message.Chat.Id, $"There is no file \"{filePath}\" at path {normalizedPath}");
                         return;
                     }
-                    using FileStream fileStream = new FileStream(Directory.GetCurrentDirectory() + "\\" + filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    using FileStream fileStream = new FileStream(normalizedPath, FileMode.Open, FileAccess.Read, FileShare.Read);
                     {
-                        await Program.Bot.SendDocument(model.Message.Chat.Id, new InputFileStream(fileStream, fileStream.Name[fileStream.Name.LastIndexOf('\\')..]), caption: filePath, replyParameters: null);
+                        await Program.Bot.SendDocument(model.Message.Chat.Id, new InputFileStream(fileStream, Path.GetFileName(fileStream.Name)), caption: filePath, replyParameters: null);
                     }
                 }
                 catch (Exception ex)
