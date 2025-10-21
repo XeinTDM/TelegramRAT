@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -25,7 +26,8 @@ public class CommandRegistryTests
 {
     private static Mock<ITelegramBotClient> CreateBotMock(
         List<string> sentMessages,
-        List<SendDocumentRequest>? sentDocuments = null)
+        List<SendDocumentRequest>? sentDocuments = null,
+        List<SendPhotoRequest>? sentPhotos = null)
     {
         var botMock = new Mock<ITelegramBotClient>(MockBehavior.Strict);
 
@@ -45,6 +47,9 @@ public class CommandRegistryTests
                     case SendDocumentRequest:
                         if (sentDocuments != null)
                             sentDocuments.Add((SendDocumentRequest)request);
+                        return Task.FromResult(new Message { MessageId = 1 });
+                    case SendPhotoRequest photoRequest:
+                        sentPhotos?.Add(photoRequest);
                         return Task.FromResult(new Message { MessageId = 1 });
                     case SendVoiceRequest:
                         return Task.FromResult(new Message { MessageId = 1 });
@@ -197,6 +202,67 @@ public class CommandRegistryTests
 
             if (Directory.Exists(tempRoot))
                 Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+
+    [Fact]
+    public async Task WindowCommand_Info_AllowsTitlesWithSpaces()
+    {
+        var sentMessages = new List<string>();
+        var sentPhotos = new List<SendPhotoRequest>();
+        var botMock = CreateBotMock(sentMessages, sentPhotos: sentPhotos);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "window");
+
+        var expectedTitle = "My App Window";
+        var fakeHandle = new IntPtr(0x1234);
+        var fakeProcessHandle = new IntPtr(0x5678);
+
+        var originalFinder = CommandRegistry.WindowFinder;
+        var originalForeground = CommandRegistry.ForegroundWindowGetter;
+        var originalValidator = CommandRegistry.WindowValidator;
+        var originalBounds = CommandRegistry.WindowBoundsGetter;
+        var originalTitle = CommandRegistry.WindowTitleGetter;
+        var originalProcessHandle = CommandRegistry.ProcessHandleFromWindow;
+        var originalProcessId = CommandRegistry.ProcessIdGetter;
+        var originalCapture = CommandRegistry.WindowCapture;
+
+        try
+        {
+            CommandRegistry.WindowFinder = (className, caption) =>
+                caption == expectedTitle ? fakeHandle : IntPtr.Zero;
+            CommandRegistry.ForegroundWindowGetter = () => fakeHandle;
+            CommandRegistry.WindowValidator = handle => handle == fakeHandle;
+            CommandRegistry.WindowBoundsGetter = _ => new Rectangle(10, 20, 300, 400);
+            CommandRegistry.WindowTitleGetter = _ => expectedTitle;
+            CommandRegistry.ProcessHandleFromWindow = _ => fakeProcessHandle;
+            CommandRegistry.ProcessIdGetter = _ => 4242;
+            CommandRegistry.WindowCapture = (handle, stream) => stream.WriteByte(0);
+
+            var model = CreateModel("window", new[] { "info", "My", "App", "Window" });
+
+            await command.Execute(model);
+
+            Assert.Empty(sentMessages);
+            var photoRequest = Assert.Single(sentPhotos);
+            Assert.Contains(expectedTitle, photoRequest.Caption);
+            var inputFile = Assert.IsType<InputFileStream>(photoRequest.Photo);
+            Assert.True(inputFile.Content.Length > 0);
+        }
+        finally
+        {
+            CommandRegistry.WindowFinder = originalFinder;
+            CommandRegistry.ForegroundWindowGetter = originalForeground;
+            CommandRegistry.WindowValidator = originalValidator;
+            CommandRegistry.WindowBoundsGetter = originalBounds;
+            CommandRegistry.WindowTitleGetter = originalTitle;
+            CommandRegistry.ProcessHandleFromWindow = originalProcessHandle;
+            CommandRegistry.ProcessIdGetter = originalProcessId;
+            CommandRegistry.WindowCapture = originalCapture;
         }
     }
 
