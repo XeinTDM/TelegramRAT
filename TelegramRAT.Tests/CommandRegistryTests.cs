@@ -267,6 +267,57 @@ public class CommandRegistryTests
     }
 
     [Fact]
+    public async Task WindowCommand_Info_AllowsHexPointerBeyondInt32()
+    {
+        var sentMessages = new List<string>();
+        var sentPhotos = new List<SendPhotoRequest>();
+        var botMock = CreateBotMock(sentMessages, sentPhotos: sentPhotos);
+        Program.SetBotClient(botMock.Object);
+
+        var commands = new List<BotCommand>();
+        CommandRegistry.InitializeCommands(commands);
+        var command = commands.Single(c => c.Command == "window");
+
+        const long pointerValue = 0x80000000;
+        var expectedHandle = new IntPtr(pointerValue);
+
+        var originalValidator = CommandRegistry.WindowValidator;
+        var originalBounds = CommandRegistry.WindowBoundsGetter;
+        var originalTitle = CommandRegistry.WindowTitleGetter;
+        var originalProcessHandle = CommandRegistry.ProcessHandleFromWindow;
+        var originalProcessId = CommandRegistry.ProcessIdGetter;
+        var originalCapture = CommandRegistry.WindowCapture;
+
+        try
+        {
+            CommandRegistry.WindowValidator = handle => handle == expectedHandle;
+            CommandRegistry.WindowBoundsGetter = _ => new Rectangle(0, 0, 100, 100);
+            CommandRegistry.WindowTitleGetter = _ => "Pointer Window";
+            CommandRegistry.ProcessHandleFromWindow = _ => new IntPtr(1234);
+            CommandRegistry.ProcessIdGetter = _ => 5678;
+            CommandRegistry.WindowCapture = (handle, stream) => stream.WriteByte(1);
+
+            var pointerArgument = $"0x{pointerValue:X}";
+            var model = CreateModel("window", new[] { "info", pointerArgument });
+
+            await command.Execute(model);
+
+            Assert.Empty(sentMessages);
+            var photoRequest = Assert.Single(sentPhotos);
+            Assert.Contains(pointerArgument[2..], photoRequest.Caption);
+        }
+        finally
+        {
+            CommandRegistry.WindowValidator = originalValidator;
+            CommandRegistry.WindowBoundsGetter = originalBounds;
+            CommandRegistry.WindowTitleGetter = originalTitle;
+            CommandRegistry.ProcessHandleFromWindow = originalProcessHandle;
+            CommandRegistry.ProcessIdGetter = originalProcessId;
+            CommandRegistry.WindowCapture = originalCapture;
+        }
+    }
+
+    [Fact]
     public async Task PowerCommand_Logoff_UsesShutdownLogoff()
     {
         var sentMessages = new List<string>();
