@@ -1573,8 +1573,9 @@ public static class CommandRegistry
                                 if (model.Args[1].Contains("0x"))
                                 {
                                     string pointerString = string.Join(string.Empty, model.Args[1].Skip(2));
-                                    int pointer = int.Parse(pointerString, System.Globalization.NumberStyles.HexNumber);
-                                    hWnd = new IntPtr(pointer);
+                                    long pointerValue = long.Parse(pointerString, System.Globalization.NumberStyles.HexNumber);
+                                    var handle = new IntPtr(pointerValue);
+                                    hWnd = handle;
                                 }
                                 else
                                 {
@@ -1615,8 +1616,9 @@ public static class CommandRegistry
                             if (model.Args[1].Contains("0x"))
                             {
                                 string pointerString = string.Join(string.Empty, model.Args[1].Skip(2));
-                                int pointer = int.Parse(pointerString, System.Globalization.NumberStyles.HexNumber);
-                                hWnd = new IntPtr(pointer);
+                                long pointerValue = long.Parse(pointerString, System.Globalization.NumberStyles.HexNumber);
+                                var handle = new IntPtr(pointerValue);
+                                hWnd = handle;
                             }
                             else
                             {
