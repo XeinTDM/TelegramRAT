@@ -327,7 +327,7 @@ public static class CommandRegistry
                                 model.Message.Chat.Id,
                                 "Done!",
                                 replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
-                            StartProcess("powershell.exe", "/c shutdown /s /t 1");
+                            StartProcess("cmd.exe", "/c shutdown /s /t 1");
                             break;
 
                         case "restart":
@@ -335,7 +335,7 @@ public static class CommandRegistry
                                 model.Message.Chat.Id,
                                 "Done!",
                                 replyParameters: new ReplyParameters { MessageId = model.Message.MessageId });
-                            StartProcess("powershell.exe", "/c shutdown /r /t 1");
+                            StartProcess("cmd.exe", "/c shutdown /r /t 1");
                             break;
 
                         case "logoff":
