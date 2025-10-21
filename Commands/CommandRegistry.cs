@@ -433,7 +433,7 @@ public static class CommandRegistry
             Command = "dir",
             Description = "Get all files and folders from specified directory. If no path is provided, shows current directory.",
             Example = "/dir C:\\Program Files",
-            ArgsCount = -2,
+            ArgsCount = -1,
             Execute = async model =>
             {
                 try
