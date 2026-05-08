@@ -164,12 +164,12 @@ static class Utils
     {
         try
         {
-            RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+            RegistryKey? key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
             if (key != null)
             {
-                string prodName = key.GetValue("ProductName") as string;
-                string csdVer = key.GetValue("CSDVersion") as string;
-                return prodName + csdVer;
+                string? prodName = key.GetValue("ProductName") as string;
+                string? csdVer = key.GetValue("CSDVersion") as string;
+                return (prodName ?? string.Empty) + (csdVer ?? string.Empty);
             }
         }
         catch (Exception ex)

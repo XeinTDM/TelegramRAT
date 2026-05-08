@@ -5,7 +5,7 @@ using System.Text;
 
 namespace TelegramRAT.Utilities;
 
-static class WinAPI
+public static class WinAPI
 {
     const string u32 = "user32.dll";
 
