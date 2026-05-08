@@ -23,7 +23,7 @@ public class UploadCommand(ITelegramBotClient botClient, IBotNotificationService
             foreach (var file in model.Files)
             {
                 string targetPath = model.Filename ?? (file.FileUniqueId + ".jpg");
-                using var fileStream = fileSystemService.OpenFileWrite(targetPath);
+                await using var fileStream = fileSystemService.OpenFileWrite(targetPath);
                 {
                     var telegramFile = await botClient.GetFile(file.FileId);
                     if (telegramFile.FilePath != null)

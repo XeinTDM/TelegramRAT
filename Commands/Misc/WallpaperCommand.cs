@@ -26,7 +26,7 @@ public class WallpaperCommand(ITelegramBotClient botClient, IBotNotificationServ
             var telegramFile = await botClient.GetFile(model.Files.Last().FileId);
             string tempWallpaper = Path.Combine(fileSystemService.GetTempPath(), "wllppr.jpg");
 
-            using (FileStream wallpapperImageFileStream = new FileStream(tempWallpaper, FileMode.Create))
+            await using (var wallpapperImageFileStream = new FileStream(tempWallpaper, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true))
             {
                 if (telegramFile.FilePath != null)
                 {

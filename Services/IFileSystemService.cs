@@ -33,7 +33,7 @@ public class FileSystemService : IFileSystemService
     public string GetFileName(string path) => Path.GetFileName(path);
     public void DeleteFile(string path) => File.Delete(path);
     public void CreateDirectory(string path) => Directory.CreateDirectory(path);
-    public void DeleteDirectory(string path) => Directory.Delete(path);
+    public void DeleteDirectory(string path) => Directory.Delete(path, true);
     public void MoveFile(string source, string destination) => File.Move(source, destination);
     public void CopyFile(string source, string destination) => File.Copy(source, destination);
     public string GetTempPath() => Path.GetTempPath();
@@ -54,6 +54,6 @@ public class FileSystemService : IFileSystemService
         return pathInput;
     }
 
-    public Stream OpenFileRead(string path) => new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-    public Stream OpenFileWrite(string path) => new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+    public Stream OpenFileRead(string path) => new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true);
+    public Stream OpenFileWrite(string path) => new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true);
 }

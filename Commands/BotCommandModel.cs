@@ -26,9 +26,15 @@ public class BotCommandModel
         if (customCommandMarker != null && text.StartsWith(customCommandMarker))
             marker = customCommandMarker;
 
-        var split = text[marker.Length..].Split(' ', 2);
-        var command = split[0].Split('@')[0].ToLower();
-        var rawArgs = split.Length > 1 ? split[1].Trim() : string.Empty;
+        var commandText = text.AsSpan(marker.Length);
+        
+        var firstSpaceIndex = commandText.IndexOf(' ');
+        var commandPart = firstSpaceIndex >= 0 ? commandText[..firstSpaceIndex] : commandText;
+        var rawArgsSpan = firstSpaceIndex >= 0 ? commandText[(firstSpaceIndex + 1)..].Trim() : default;
+
+        var atIndex = commandPart.IndexOf('@');
+        var command = (atIndex >= 0 ? commandPart[..atIndex] : commandPart).ToString().ToLower();
+        var rawArgs = rawArgsSpan.ToString();
         var args = ParseArgs(rawArgs);
 
         var files = new List<FileBase>();

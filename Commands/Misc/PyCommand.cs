@@ -26,7 +26,7 @@ public class PyCommand(ITelegramBotClient botClient, IBotNotificationService not
                 }
 
                 pythonService.Execute(model.RawArgs ?? string.Empty, out string output);
-                output = new string(output.Take(4096).ToArray());
+                output = output.Length > 4096 ? output[..4096] : output;
 
                 string response = string.IsNullOrWhiteSpace(output) ? "Executed!" : $"Executed! Output:\n{output}";
                 await botClient.SendMessage(model.Message.Chat.Id, response, replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = model.Message.MessageId });
@@ -40,7 +40,7 @@ public class PyCommand(ITelegramBotClient botClient, IBotNotificationService not
                 
                 try
                 {
-                    await using (var scriptFileStream = new FileStream(tempScript, FileMode.Create))
+                    await using (var scriptFileStream = new FileStream(tempScript, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true))
                     {
                         if (file.FilePath != null)
                         {
@@ -49,7 +49,7 @@ public class PyCommand(ITelegramBotClient botClient, IBotNotificationService not
                     }
 
                     string fileOutput = await pythonService.ExecuteFileAsync(tempScript);
-                    fileOutput = new string(fileOutput.Take(4096).ToArray());
+                    fileOutput = fileOutput.Length > 4096 ? fileOutput[..4096] : fileOutput;
 
                     string response = string.IsNullOrWhiteSpace(fileOutput) ? "Executed!" : $"Executed! Output: {fileOutput}";
                     await botClient.SendMessage(model.Message.Chat.Id, response, replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = model.Message.MessageId });

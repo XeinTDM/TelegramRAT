@@ -38,7 +38,12 @@ public class DrivesCommand(ITelegramBotClient botClient, IBotNotificationService
                 }
                 drivesStr.AppendLine();
             }
-            await botClient.SendMessage(model.Message.Chat.Id, string.Join(string.Empty, drivesStr.ToString().Take(4096).ToArray()), ParseMode.Html, replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = model.Message.MessageId });
+            await botClient.SendMessage(
+                model.Message.Chat.Id,
+                drivesStr.ToString(0, Math.Min(4096, drivesStr.Length)),
+                ParseMode.Html,
+                replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = model.Message.MessageId }
+            );
         }
         catch (Exception ex)
         {

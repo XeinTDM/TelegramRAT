@@ -12,8 +12,7 @@ public class PingCommand(ITelegramBotClient botClient) : AbstractBotCommand
     {
         if (model.Message == null) return;
 
-        await botClient.SendMessage(model.Message.Chat.Id, "Ping!", replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = model.Message.MessageId });
         var elapsedTime = (DateTime.UtcNow - model.Message.Date.ToUniversalTime()).TotalMilliseconds;
-        await botClient.SendMessage(model.Message.Chat.Id, $"Elapsed time: {elapsedTime} ms", replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = model.Message.MessageId });
+        await botClient.SendMessage(model.Message.Chat.Id, $"Pong!\nElapsed time: {elapsedTime:F0} ms", replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = model.Message.MessageId });
     }
 }

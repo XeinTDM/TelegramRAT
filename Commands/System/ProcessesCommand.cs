@@ -20,35 +20,26 @@ public class ProcessesCommand(ITelegramBotClient botClient, IBotNotificationServ
 
         try
         {
-            StringBuilder processesList = new StringBuilder();
-            processesList.AppendLine("List of processes: ");
-            int i = 1;
+            using MemoryStream ms = new MemoryStream();
+            using StreamWriter sw = new StreamWriter(ms, Encoding.UTF8, 1024, leaveOpen: true);
+            sw.WriteLine("List of processes: ");
+            
             Process[] processCollection = Process.GetProcesses();
 
-            foreach (Process p in processCollection)
+            foreach (Process p in processCollection.OrderBy(p => p.ProcessName))
             {
-                processesList.AppendLine($"<code>{WebUtility.HtmlEncode(p.ProcessName)}</code> : <code>{p.Id}</code>");
-                if (i % 50 == 0)
-                {
-                    await botClient.SendMessage(
-                        model.Message.Chat.Id,
-                        processesList.ToString(),
-                        parseMode: ParseMode.Html,
-                        replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = model.Message.MessageId }
-                    );
-                    processesList.Clear();
-                }
-                i++;
+                sw.WriteLine($"{p.ProcessName} : {p.Id}");
             }
-            if (processesList.Length > 0)
-            {
-                await botClient.SendMessage(
-                    model.Message.Chat.Id,
-                    processesList.ToString(),
-                    parseMode: ParseMode.Html,
-                    replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = model.Message.MessageId }
-                );
-            }
+            
+            await sw.FlushAsync();
+            ms.Position = 0;
+
+            await botClient.SendDocument(
+                chatId: model.Message.Chat.Id,
+                document: new Telegram.Bot.Types.InputFileStream(ms, "processes.txt"),
+                caption: "List of running processes.",
+                replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = model.Message.MessageId }
+            );
         }
         catch (Exception ex)
         {

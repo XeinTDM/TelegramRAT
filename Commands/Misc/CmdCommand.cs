@@ -39,7 +39,7 @@ public class CmdCommand(IBotNotificationService notificationService) : AbstractB
             var output = outputTask.Result;
             var error = errorTask.Result;
             var combinedOutput = string.IsNullOrWhiteSpace(output) ? error : output;
-            combinedOutput = new string(combinedOutput.Take(4096).ToArray());
+            combinedOutput = combinedOutput.Length > 4096 ? combinedOutput[..4096] : combinedOutput;
 
             if (string.IsNullOrWhiteSpace(combinedOutput))
                 await notificationService.SendSuccessAsync(model.Message, "Command executed successfully with no output.");

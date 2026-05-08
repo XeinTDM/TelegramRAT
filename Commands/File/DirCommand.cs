@@ -34,45 +34,45 @@ public class DirCommand(ITelegramBotClient botClient, IBotNotificationService no
             var files = fileSystemService.EnumerateFiles(curdir);
             var dirs = fileSystemService.EnumerateDirectories(curdir);
 
-            var response = new StringBuilder();
-
-            bool hasFiles = false;
-            foreach (var file in files)
-            {
-                if (!hasFiles)
-                {
-                    response.AppendLine("<b>Files:</b>\n");
-                    hasFiles = true;
-                }
-                response.AppendLine($"<code>{fileSystemService.GetFileName(file)}</code>");
-                if (response.Length > 4000)
-                {
-                    await botClient.SendMessage(model.Message.Chat.Id, response.ToString(), parseMode: ParseMode.Html);
-                    response.Clear();
-                }
-            }
-            if (hasFiles) response.AppendLine();
+            using MemoryStream ms = new MemoryStream();
+            using StreamWriter sw = new StreamWriter(ms, Encoding.UTF8, 1024, leaveOpen: true);
 
             bool hasDirs = false;
             foreach (var dir in dirs)
             {
                 if (!hasDirs)
                 {
-                    response.AppendLine("<b>Folders:</b>\n");
+                    sw.WriteLine("Folders:");
+                    sw.WriteLine();
                     hasDirs = true;
                 }
-                response.AppendLine($"<code>{fileSystemService.GetFileName(dir)}</code>");
-                if (response.Length > 4000)
+                sw.WriteLine(fileSystemService.GetFileName(dir));
+            }
+            if (hasDirs) sw.WriteLine();
+
+            bool hasFiles = false;
+            foreach (var file in files)
+            {
+                if (!hasFiles)
                 {
-                    await botClient.SendMessage(model.Message.Chat.Id, response.ToString(), parseMode: ParseMode.Html);
-                    response.Clear();
+                    sw.WriteLine("Files:");
+                    sw.WriteLine();
+                    hasFiles = true;
                 }
+                sw.WriteLine(fileSystemService.GetFileName(file));
             }
 
-            if (response.Length > 0 || hasFiles || hasDirs)
+            if (hasFiles || hasDirs)
             {
-                if (response.Length > 0)
-                    await botClient.SendMessage(model.Message.Chat.Id, response.ToString(), parseMode: ParseMode.Html);
+                await sw.FlushAsync();
+                ms.Position = 0;
+
+                await botClient.SendDocument(
+                    chatId: model.Message.Chat.Id,
+                    document: new Telegram.Bot.Types.InputFileStream(ms, "directory_contents.txt"),
+                    caption: $"Contents of {curdir}",
+                    replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = model.Message.MessageId }
+                );
             }
             else
             {

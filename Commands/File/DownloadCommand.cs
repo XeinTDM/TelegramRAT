@@ -30,7 +30,7 @@ public class DownloadCommand(ITelegramBotClient botClient, IBotNotificationServi
                 return;
             }
 
-            using var fileStream = fileSystemService.OpenFileRead(normalizedPath);
+            await using var fileStream = fileSystemService.OpenFileRead(normalizedPath);
             {
                 await botClient.SendDocument(model.Message.Chat.Id, new InputFileStream(fileStream, fileSystemService.GetFileName(normalizedPath)), caption: filePath);
             }
