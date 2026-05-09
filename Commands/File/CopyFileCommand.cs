@@ -16,8 +16,8 @@ public class CopyFileCommand(ITelegramBotClient botClient, IBotNotificationServi
 
         try
         {
-            string sourceFile = model.Args[0];
-            string targetDir = model.Args[1];
+            string sourceFile = fileSystemService.SanitizePath(model.Args[0]);
+            string targetDir = fileSystemService.SanitizePath(model.Args[1]);
 
             if (fileSystemService.FileExists(sourceFile) && fileSystemService.DirectoryExists(targetDir))
             {

@@ -17,8 +17,8 @@ public class RenameCommand(ITelegramBotClient botClient, IBotNotificationService
 
         try
         {
-            string oldPath = model.Args[0];
-            string newName = model.Args[1];
+            string oldPath = fileSystemService.SanitizePath(model.Args[0]);
+            string newName = fileSystemService.SanitizePath(model.Args[1]);
             string directory = Path.GetDirectoryName(fileSystemService.GetFullPath(oldPath)) ?? string.Empty;
             string newPath = Path.Combine(directory, newName);
 

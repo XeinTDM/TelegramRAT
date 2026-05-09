@@ -58,6 +58,6 @@ public class PowerCommand(ITelegramBotClient botClient, IBotNotificationService 
             UseShellExecute = false,
             WindowStyle = ProcessWindowStyle.Hidden
         };
-        Process.Start(startInfo);
+        using var process = Process.Start(startInfo);
     }
 }

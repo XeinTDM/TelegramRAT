@@ -22,7 +22,10 @@ public class ProcessKillCommand(IBotNotificationService notificationService) : A
                 string procStr = model.Args[0][3..].Trim();
                 if (!string.IsNullOrEmpty(procStr) && int.TryParse(procStr, out int procId))
                 {
-                    Process.GetProcessById(procId).Kill();
+                    using (var proc = Process.GetProcessById(procId))
+                    {
+                        proc.Kill();
+                    }
                     await notificationService.SendSuccessAsync(model.Message, "Process killed successfully.");
                 }
                 else
@@ -43,7 +46,10 @@ public class ProcessKillCommand(IBotNotificationService notificationService) : A
                 }
                 foreach (var proc in processes)
                 {
-                    proc.Kill();
+                    using (proc)
+                    {
+                        proc.Kill();
+                    }
                 }
                 await notificationService.SendSuccessAsync(model.Message, "Processes killed successfully.");
                 return;
@@ -57,7 +63,10 @@ public class ProcessKillCommand(IBotNotificationService notificationService) : A
             }
             foreach (var proc in defaultProcesses)
             {
-                proc.Kill();
+                using (proc)
+                {
+                    proc.Kill();
+                }
             }
             await notificationService.SendSuccessAsync(model.Message, "Processes killed successfully.");
         }

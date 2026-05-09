@@ -26,6 +26,7 @@ public class PythonService : IPythonService
     {
         using var pyStream = new MemoryStream();
         _engine.Runtime.IO.SetOutput(pyStream, Encoding.UTF8);
+        _engine.Runtime.IO.SetErrorOutput(pyStream, Encoding.UTF8);
 
         try
         {
@@ -41,6 +42,7 @@ public class PythonService : IPythonService
         finally
         {
             _engine.Runtime.IO.SetOutput(Stream.Null, Encoding.UTF8);
+            _engine.Runtime.IO.SetErrorOutput(Stream.Null, Encoding.UTF8);
         }
     }
 
@@ -48,6 +50,7 @@ public class PythonService : IPythonService
     {
         using var pyStream = new MemoryStream();
         _engine.Runtime.IO.SetOutput(pyStream, Encoding.UTF8);
+        _engine.Runtime.IO.SetErrorOutput(pyStream, Encoding.UTF8);
 
         try
         {
@@ -63,6 +66,7 @@ public class PythonService : IPythonService
         finally
         {
             _engine.Runtime.IO.SetOutput(Stream.Null, Encoding.UTF8);
+            _engine.Runtime.IO.SetErrorOutput(Stream.Null, Encoding.UTF8);
         }
     }
 

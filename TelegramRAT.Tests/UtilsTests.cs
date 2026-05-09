@@ -6,15 +6,16 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using TelegramRAT.Features;
+using TelegramRAT.Services;
 using TelegramRAT.Utilities;
 using Xunit;
 
 namespace TelegramRAT.Tests;
 
-public class UtilsTests
+public class NetworkServiceTests
 {
     [Fact]
-    public async Task SharedHttpClient_ReusesAcrossRequestsAndParsesJson()
+    public async Task GetIpAddressAndJson_ParsesCorrectly()
     {
         var responses = new Dictionary<string, string>
         {
@@ -28,32 +29,29 @@ public class UtilsTests
             Timeout = TimeSpan.FromSeconds(10)
         };
 
-        using (Utils.OverrideHttpClient(httpClient))
-        {
-            var ipAddress = await Utils.GetIpAddressAsync();
-            var networkInfo = await Utils.GetFromJsonAsync<NetworkInfo>("http://ip-api.com/json/" + ipAddress);
+        var factory = new StubHttpClientFactory(httpClient);
+        var networkService = new NetworkService(factory);
 
-            Assert.Equal("203.0.113.42", ipAddress);
-            Assert.Equal("ExampleISP", networkInfo.Isp);
-            Assert.Equal("Wonderland", networkInfo.Country);
-            Assert.Equal("Fictionville", networkInfo.City);
-            Assert.Equal("UTC+0", networkInfo.Timezone);
-            Assert.Equal("WL", networkInfo.CountryCode);
-            Assert.Equal(51.5074, networkInfo.Lat.GetValueOrDefault());
-            Assert.Equal(-0.1278, networkInfo.Lon.GetValueOrDefault());
+        var ipAddress = await networkService.GetIpAddressAsync();
+        var networkInfo = await networkService.GetFromJsonAsync<NetworkInfo>("http://ip-api.com/json/" + ipAddress);
 
-            var networkInformationString = "Network information:\n\n" +
-                $"IP: {ipAddress}\n" +
-                $"ISP: {networkInfo.Isp}\n" +
-                $"Country: {networkInfo.Country}\n" +
-                $"City: {networkInfo.City}\n" +
-                $"Timezone: {networkInfo.Timezone}\n" +
-                $"Country Code: {networkInfo.CountryCode}";
-
-            Assert.Contains("Network information:", networkInformationString);
-        }
+        Assert.Equal("203.0.113.42", ipAddress);
+        Assert.Equal("ExampleISP", networkInfo.Isp);
+        Assert.Equal("Wonderland", networkInfo.Country);
+        Assert.Equal("Fictionville", networkInfo.City);
+        Assert.Equal("UTC+0", networkInfo.Timezone);
+        Assert.Equal("WL", networkInfo.CountryCode);
+        Assert.Equal(51.5074, networkInfo.Lat.GetValueOrDefault());
+        Assert.Equal(-0.1278, networkInfo.Lon.GetValueOrDefault());
 
         Assert.Equal(2, handler.RequestCount);
+    }
+
+    private sealed class StubHttpClientFactory : IHttpClientFactory
+    {
+        private readonly HttpClient _client;
+        public StubHttpClientFactory(HttpClient client) => _client = client;
+        public HttpClient CreateClient(string name) => _client;
     }
 
     private sealed class StubHttpMessageHandler : HttpMessageHandler

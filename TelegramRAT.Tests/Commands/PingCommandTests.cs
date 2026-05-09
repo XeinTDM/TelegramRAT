@@ -30,14 +30,8 @@ public class PingCommandTests
         await command.ExecuteAsync(model);
 
         // Assert
-        // We expect two messages: "Ping!" and "Elapsed time: ... ms"
         botMock.Verify(b => b.SendRequest(
-            It.Is<SendMessageRequest>(r => r.Text == "Ping!" && r.ChatId.Identifier == 123),
-            It.IsAny<CancellationToken>()), 
-            Times.Once);
-
-        botMock.Verify(b => b.SendRequest(
-            It.Is<SendMessageRequest>(r => r.Text.StartsWith("Elapsed time:") && r.ChatId.Identifier == 123),
+            It.Is<SendMessageRequest>(r => r.Text.StartsWith("Pong!\nElapsed time:") && r.ChatId.Identifier == 123),
             It.IsAny<CancellationToken>()), 
             Times.Once);
     }

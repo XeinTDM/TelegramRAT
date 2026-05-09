@@ -16,7 +16,7 @@ public class CmdCommand(IBotNotificationService notificationService) : AbstractB
 
         try
         {
-            var process = new Process
+            using var process = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
@@ -38,7 +38,12 @@ public class CmdCommand(IBotNotificationService notificationService) : AbstractB
 
             var output = outputTask.Result;
             var error = errorTask.Result;
-            var combinedOutput = string.IsNullOrWhiteSpace(output) ? error : output;
+            var combinedOutput = output;
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                combinedOutput += string.IsNullOrWhiteSpace(combinedOutput) ? error : $"\nErrors:\n{error}";
+            }
+            
             combinedOutput = combinedOutput.Length > 4096 ? combinedOutput[..4096] : combinedOutput;
 
             if (string.IsNullOrWhiteSpace(combinedOutput))

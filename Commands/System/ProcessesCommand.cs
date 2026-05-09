@@ -26,9 +26,19 @@ public class ProcessesCommand(ITelegramBotClient botClient, IBotNotificationServ
             
             Process[] processCollection = Process.GetProcesses();
 
-            foreach (Process p in processCollection.OrderBy(p => p.ProcessName))
+            try
             {
-                sw.WriteLine($"{p.ProcessName} : {p.Id}");
+                foreach (Process p in processCollection.OrderBy(p => p.ProcessName))
+                {
+                    sw.WriteLine($"{p.ProcessName} : {p.Id}");
+                }
+            }
+            finally
+            {
+                foreach (Process p in processCollection)
+                {
+                    p.Dispose();
+                }
             }
             
             await sw.FlushAsync();

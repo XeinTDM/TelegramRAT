@@ -34,6 +34,9 @@ public class AudioCommand(ITelegramBotClient botClient, IBotNotificationService 
             using MemoryStream memstrm = new MemoryStream();
             using WaveFileWriter waveFileWriter = new WaveFileWriter(memstrm, waveIn.WaveFormat);
 
+            var tcs = new TaskCompletionSource<bool>();
+            waveIn.RecordingStopped += (_, _) => tcs.TrySetResult(true);
+
             waveIn.DataAvailable += (_, args) =>
             {
                 waveFileWriter.Write(args.Buffer, 0, args.BytesRecorded);
@@ -46,6 +49,9 @@ public class AudioCommand(ITelegramBotClient botClient, IBotNotificationService 
             await Task.Delay(TimeSpan.FromSeconds(recordLength));
 
             waveIn.StopRecording();
+            await tcs.Task;
+
+            waveFileWriter.Flush();
             memstrm.Position = 0;
 
             await botClient.SendVoice(model.Message.Chat.Id, new Telegram.Bot.Types.InputFileStream(memstrm, "record"), replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = model.Message.MessageId });

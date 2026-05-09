@@ -39,7 +39,7 @@ public class OpenUrlCommand(ITelegramBotClient botClient, IBotNotificationServic
                 UseShellExecute = true
             };
 
-            var process = Process.Start(startInfo);
+            using var process = Process.Start(startInfo);
 
             if (process == null)
             {

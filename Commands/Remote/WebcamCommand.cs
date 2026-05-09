@@ -32,9 +32,12 @@ public class WebcamCommand(ITelegramBotClient botClient, IBotNotificationService
                 VideoCaptureDevice device = new VideoCaptureDevice(captureDevices[0].MonikerString);
                 
                 var tcs = new TaskCompletionSource<bool>();
+                int frameCaptured = 0;
 
                 device.NewFrame += (sender, args) =>
                 {
+                    if (global::System.Threading.Interlocked.Exchange(ref frameCaptured, 1) == 1) return;
+
                     using (Bitmap? photoBitmap = args.Frame.Clone() as Bitmap)
                     {
                         if (photoBitmap != null)

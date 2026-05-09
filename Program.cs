@@ -78,6 +78,21 @@ public static class Program
                     var winApiService = serviceProvider.GetRequiredService<IWinApiService>();
                     var networkService = serviceProvider.GetRequiredService<INetworkService>();
                     
+                    var allCommands = serviceProvider.GetServices<IBotCommand>();
+                    var myCommands = allCommands
+                        .Where(c => !string.IsNullOrWhiteSpace(c.Description) && !string.IsNullOrWhiteSpace(c.Command))
+                        .Select(c => new Telegram.Bot.Types.BotCommand { Command = c.Command, Description = c.Description })
+                        .ToList();
+                    
+                    try
+                    {
+                        await botClient.SetMyCommands(myCommands, cancellationToken: cancellationSource.Token);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to set bot commands: {ex.Message}");
+                    }
+                    
                     await RunAsync(botClient, dispatcher, notificationService, winApiService, networkService, cancellationSource.Token);
                     break;
                 }
@@ -124,6 +139,8 @@ public static class Program
     private static IServiceCollection ConfigureServices()
     {
         var services = new ServiceCollection();
+
+        services.AddHttpClient();
 
         // Infrastructure
         services.AddSingleton<ITelegramBotClient>(sp => new TelegramBotClient(BotToken));

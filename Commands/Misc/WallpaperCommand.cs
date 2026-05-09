@@ -36,11 +36,6 @@ public class WallpaperCommand(ITelegramBotClient botClient, IBotNotificationServ
 
             winApiService.SystemParametersInfo(WinAPI.SPI_SETDESKWALLPAPER, 0, tempWallpaper, WinAPI.SPIF_UPDATEINIFILE | WinAPI.SPIF_SENDWININICHANGE);
             
-            if (fileSystemService.FileExists(tempWallpaper))
-            {
-                fileSystemService.DeleteFile(tempWallpaper);
-            }
-
             await botClient.SendMessage(model.Message.Chat.Id, "Done!", replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = model.Message.MessageId });
         }
         catch (Exception ex)
